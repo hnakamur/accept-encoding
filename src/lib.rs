@@ -42,7 +42,6 @@ impl<'a> QValueResolver<'a> {
 
         let mut is_q_param = false;
         while let Some(token) = self.lexer.next_token() {
-            dbg!(&token);
             match self.state {
                 State::SearchingEncoding => match token {
                     Token::TokenOrValue(tok_or_val) => {
