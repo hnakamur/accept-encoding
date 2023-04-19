@@ -1,11 +1,10 @@
 use std::ops::Range;
 
-pub fn resolve_q_value(value: &[u8], encoding: &[u8]) -> Option<f32> {
-    let mut resolver = QValueResolver::new(value);
-    resolver.resolve(encoding)
+pub fn q_value_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<f32> {
+    QValueFinder::new(header_value).find(encoding)
 }
 
-struct QValueResolver<'a> {
+struct QValueFinder<'a> {
     lexer: Lexer<'a>,
     state: State,
     cur_result: Option<MatchResult>,
@@ -26,7 +25,7 @@ struct MatchResult {
     q: f32,
 }
 
-impl<'a> QValueResolver<'a> {
+impl<'a> QValueFinder<'a> {
     fn new(value: &'a [u8]) -> Self {
         Self {
             lexer: Lexer::new(value),
@@ -36,7 +35,7 @@ impl<'a> QValueResolver<'a> {
         }
     }
 
-    pub fn resolve(&mut self, encoding: &[u8]) -> Option<f32> {
+    pub fn find(&mut self, encoding: &[u8]) -> Option<f32> {
         let is_gzip = bytes_eq_ignore_case(encoding, b"gzip");
         let is_compress = bytes_eq_ignore_case(encoding, b"compress");
 
@@ -261,32 +260,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_q_value() {
-        let q = resolve_q_value(b"*", b"gzip");
+    fn test_q_value_for_encoding() {
+        let q = q_value_for_encoding(b"*", b"gzip");
         assert_eq!(Some(1.0), q);
 
-        let q = resolve_q_value(b"*  ; q=0.5", b"gzip");
+        let q = q_value_for_encoding(b"*  ; q=0.5", b"gzip");
         assert_eq!(Some(0.5), q);
 
-        let q = resolve_q_value(b" gzip", b"gzip");
+        let q = q_value_for_encoding(b" gzip", b"gzip");
         assert_eq!(Some(1.0), q);
 
-        let q = resolve_q_value(b" gzip ; a=b ", b"gzip");
+        let q = q_value_for_encoding(b" gzip ; a=b ", b"gzip");
         assert_eq!(Some(1.0), q);
 
-        let q = resolve_q_value(b" gzip ; q=0.8 ", b"gzip");
+        let q = q_value_for_encoding(b" gzip ; q=0.8 ", b"gzip");
         assert_eq!(Some(0.8), q);
 
-        let q = resolve_q_value(b" x-Gzip ; q=0.8 ", b"gzip");
+        let q = q_value_for_encoding(b" x-Gzip ; q=0.8 ", b"gzip");
         assert_eq!(Some(0.8), q);
 
-        let q = resolve_q_value(b"br  ; q=1", b"gzip");
+        let q = q_value_for_encoding(b"br  ; q=1", b"gzip");
         assert_eq!(None, q);
 
-        let q = resolve_q_value(b"br  ; q=0.9 , gzip;q=0.8", b"gzip");
+        let q = q_value_for_encoding(b"br  ; q=0.9 , gzip;q=0.8", b"gzip");
         assert_eq!(Some(0.8), q);
 
-        let q = resolve_q_value(b"br  ; q=0.9 , gzip;q=0.8", b"br");
+        let q = q_value_for_encoding(b"br  ; q=0.9 , gzip;q=0.8", b"br");
         assert_eq!(Some(0.9), q);
     }
 
