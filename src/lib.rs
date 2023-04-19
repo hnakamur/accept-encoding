@@ -154,12 +154,11 @@ fn bytes_eq_ignore_case(bytes1: &[u8], bytes2: &[u8]) -> bool {
 
 fn byte_eq_ignore_case(b1: u8, b2: u8) -> bool {
     // Apapted from https://docs.rs/ascii/1.1.0/src/ascii/ascii_char.rs.html#726-732
-    if b1 == b2 {
-        return true;
+    b1 == b2 || {
+        let b1_not_upper = b1 | 0b010_0000;
+        let b2_not_upper = b2 | 0b010_0000;
+        b1_not_upper >= b'a' && b1_not_upper <= b'z' && b1_not_upper == b2_not_upper
     }
-    let b1_not_upper = b1 | 0b010_0000;
-    let b2_not_upper = b2 | 0b010_0000;
-    b1_not_upper >= b'a' && b1_not_upper <= b'z' && b1_not_upper == b2_not_upper
 }
 
 struct Lexer<'a> {
