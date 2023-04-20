@@ -4,6 +4,18 @@ pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<MatchR
     QValueFinder::new(header_value).find(encoding)
 }
 
+pub fn is_better_match(match1: Option<&MatchResult>, match2: Option<&MatchResult>) -> bool {
+    if let Some(match1) = match1 {
+        if let Some(match2) = match2 {
+            match1.better(match2)
+        } else {
+            true
+        }
+    } else {
+        false
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct MatchResult {
     pub wildcard: bool,
@@ -128,20 +140,8 @@ impl<'a> QValueFinder<'a> {
     }
 
     fn may_update_best_result(&mut self) {
-        if self.should_update_best_result() {
+        if is_better_match(self.cur_result.as_ref(), self.best_result.as_ref()) {
             self.best_result = self.cur_result.take();
-        }
-    }
-
-    fn should_update_best_result(&self) -> bool {
-        if let Some(cur_result) = self.cur_result.as_ref() {
-            if let Some(best_result) = self.best_result.as_ref() {
-                cur_result.better(best_result)
-            } else {
-                true
-            }
-        } else {
-            false
         }
     }
 }
@@ -368,7 +368,7 @@ mod tests {
                 br_res
             );
 
-            assert!(br_res.unwrap().better(gzip_res.as_ref().unwrap()));
+            assert!(is_better_match(br_res.as_ref(), gzip_res.as_ref()));
         }
 
         {
@@ -391,7 +391,7 @@ mod tests {
                 br_res
             );
 
-            // assert!(br_res.unwrap().better(gzip_res.as_ref().unwrap()));
+            assert!(is_better_match(br_res.as_ref(), gzip_res.as_ref()));
         }
     }
 
