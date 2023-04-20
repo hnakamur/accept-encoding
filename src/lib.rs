@@ -1,7 +1,23 @@
 use std::ops::Range;
 
-pub fn q_value_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<f32> {
+pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<MatchResult> {
     QValueFinder::new(header_value).find(encoding)
+}
+
+#[derive(Debug, PartialEq)]
+pub struct MatchResult {
+    pub wildcard: bool,
+    pub q: f32,
+}
+
+impl MatchResult {
+    pub fn better(&self, other: &MatchResult) -> bool {
+        if self.wildcard == other.wildcard {
+            self.q > other.q
+        } else {
+            !self.wildcard
+        }
+    }
 }
 
 struct QValueFinder<'a> {
@@ -20,11 +36,6 @@ enum State {
     SeenParameterValue,
 }
 
-struct MatchResult {
-    wildcard: bool,
-    q: f32,
-}
-
 impl<'a> QValueFinder<'a> {
     fn new(value: &'a [u8]) -> Self {
         Self {
@@ -35,7 +46,7 @@ impl<'a> QValueFinder<'a> {
         }
     }
 
-    pub fn find(&mut self, encoding: &[u8]) -> Option<f32> {
+    pub fn find(&mut self, encoding: &[u8]) -> Option<MatchResult> {
         let is_gzip = bytes_eq_ignore_case(encoding, b"gzip");
         let is_compress = bytes_eq_ignore_case(encoding, b"compress");
 
@@ -113,7 +124,7 @@ impl<'a> QValueFinder<'a> {
             }
         }
         self.may_update_best_result();
-        self.best_result.take().map(|result| result.q)
+        self.best_result.take()
     }
 
     fn may_update_best_result(&mut self) {
@@ -125,11 +136,7 @@ impl<'a> QValueFinder<'a> {
     fn should_update_best_result(&self) -> bool {
         if let Some(cur_result) = self.cur_result.as_ref() {
             if let Some(best_result) = self.best_result.as_ref() {
-                if cur_result.wildcard {
-                    !best_result.wildcard && cur_result.q > best_result.q
-                } else {
-                    best_result.wildcard || cur_result.q > best_result.q
-                }
+                cur_result.better(best_result)
             } else {
                 true
             }
@@ -260,33 +267,180 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_q_value_for_encoding() {
-        let q = q_value_for_encoding(b"*", b"gzip");
-        assert_eq!(Some(1.0), q);
+    fn test_match_for_encoding() {
+        let res = match_for_encoding(b"*", b"gzip");
+        assert_eq!(
+            Some(MatchResult {
+                wildcard: true,
+                q: 1.0,
+            }),
+            res,
+        );
 
-        let q = q_value_for_encoding(b"*  ; q=0.5", b"gzip");
-        assert_eq!(Some(0.5), q);
+        let res = match_for_encoding(b"*  ; q=0.5", b"gzip");
+        assert_eq!(
+            Some(MatchResult {
+                wildcard: true,
+                q: 0.5,
+            }),
+            res
+        );
 
-        let q = q_value_for_encoding(b" gzip", b"gzip");
-        assert_eq!(Some(1.0), q);
+        let res = match_for_encoding(b" gzip", b"gzip");
+        assert_eq!(
+            Some(MatchResult {
+                wildcard: false,
+                q: 1.0,
+            }),
+            res
+        );
 
-        let q = q_value_for_encoding(b" gzip ; a=b ", b"gzip");
-        assert_eq!(Some(1.0), q);
+        let res = match_for_encoding(b" gzip ; a=b ", b"gzip");
+        assert_eq!(
+            Some(MatchResult {
+                wildcard: false,
+                q: 1.0,
+            }),
+            res
+        );
 
-        let q = q_value_for_encoding(b" gzip ; q=0.8 ", b"gzip");
-        assert_eq!(Some(0.8), q);
+        let res = match_for_encoding(b" gzip ; q=0.8 ", b"gzip");
+        assert_eq!(
+            Some(MatchResult {
+                wildcard: false,
+                q: 0.8,
+            }),
+            res
+        );
 
-        let q = q_value_for_encoding(b" x-Gzip ; q=0.8 ", b"gzip");
-        assert_eq!(Some(0.8), q);
+        let res = match_for_encoding(b" x-Gzip ; q=0.8 ", b"gzip");
+        assert_eq!(
+            Some(MatchResult {
+                wildcard: false,
+                q: 0.8,
+            }),
+            res
+        );
 
-        let q = q_value_for_encoding(b"br  ; q=1", b"gzip");
-        assert_eq!(None, q);
+        let res = match_for_encoding(b"br  ; q=1", b"gzip");
+        assert_eq!(None, res);
 
-        let q = q_value_for_encoding(b"br  ; q=0.9 , gzip;q=0.8", b"gzip");
-        assert_eq!(Some(0.8), q);
+        {
+            let header_value = b"br  ; q=0.9 , gzip;q=0.8";
+            let gzip_res = match_for_encoding(header_value, b"gzip");
+            assert_eq!(
+                Some(MatchResult {
+                    wildcard: false,
+                    q: 0.8,
+                }),
+                gzip_res
+            );
 
-        let q = q_value_for_encoding(b"br  ; q=0.9 , gzip;q=0.8", b"br");
-        assert_eq!(Some(0.9), q);
+            let br_res = match_for_encoding(header_value, b"br");
+            assert_eq!(
+                Some(MatchResult {
+                    wildcard: false,
+                    q: 0.9,
+                }),
+                br_res
+            );
+
+            assert!(br_res.unwrap().better(gzip_res.as_ref().unwrap()));
+        }
+
+        {
+            let header_value = b"br , *";
+            let gzip_res = match_for_encoding(header_value, b"gzip");
+            assert_eq!(
+                Some(MatchResult {
+                    wildcard: true,
+                    q: 1.0,
+                }),
+                gzip_res
+            );
+
+            let br_res = match_for_encoding(header_value, b"br");
+            assert_eq!(
+                Some(MatchResult {
+                    wildcard: false,
+                    q: 1.0,
+                }),
+                br_res
+            );
+
+            assert!(br_res.unwrap().better(gzip_res.as_ref().unwrap()));
+        }
+
+        {
+            let header_value = b"br; q=0.9 , *";
+            let gzip_res = match_for_encoding(header_value, b"gzip");
+            assert_eq!(
+                Some(MatchResult {
+                    wildcard: true,
+                    q: 1.0,
+                }),
+                gzip_res
+            );
+
+            let br_res = match_for_encoding(header_value, b"br");
+            assert_eq!(
+                Some(MatchResult {
+                    wildcard: false,
+                    q: 0.9,
+                }),
+                br_res
+            );
+
+            // assert!(br_res.unwrap().better(gzip_res.as_ref().unwrap()));
+        }
+    }
+
+    #[test]
+    fn test_match_result_better() {
+        assert!(MatchResult {
+            wildcard: false,
+            q: 1.0,
+        }
+        .better(&MatchResult {
+            wildcard: false,
+            q: 0.9,
+        }));
+
+        assert!(MatchResult {
+            wildcard: true,
+            q: 1.0,
+        }
+        .better(&MatchResult {
+            wildcard: true,
+            q: 0.9,
+        }));
+
+        assert!(MatchResult {
+            wildcard: false,
+            q: 0.9,
+        }
+        .better(&MatchResult {
+            wildcard: true,
+            q: 1.0,
+        }));
+
+        assert!(!MatchResult {
+            wildcard: true,
+            q: 1.0,
+        }
+        .better(&MatchResult {
+            wildcard: false,
+            q: 0.9,
+        }));
+
+        assert!(!MatchResult {
+            wildcard: false,
+            q: 1.0,
+        }
+        .better(&MatchResult {
+            wildcard: false,
+            q: 1.0,
+        }));
     }
 
     #[test]
