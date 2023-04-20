@@ -1,34 +1,26 @@
-use std::ops::Range;
+use std::{cmp::Ordering, ops::Range};
+
+use ordered_float::NotNan;
 
 pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<MatchResult> {
     QValueFinder::new(header_value).find(encoding)
 }
 
-pub fn is_better_match(match1: Option<&MatchResult>, match2: Option<&MatchResult>) -> bool {
-    if let Some(match1) = match1 {
-        if let Some(match2) = match2 {
-            match1.better(match2)
-        } else {
-            true
-        }
-    } else {
-        false
+#[derive(Debug, PartialEq, Eq)]
+pub struct MatchResult {
+    pub wildcard: bool,
+    pub q: NotNan<f32>,
+}
+
+impl Ord for MatchResult {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (!self.wildcard, &self.q).cmp(&(!other.wildcard, &other.q))
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct MatchResult {
-    pub wildcard: bool,
-    pub q: f32,
-}
-
-impl MatchResult {
-    pub fn better(&self, other: &MatchResult) -> bool {
-        if self.wildcard == other.wildcard {
-            self.q > other.q
-        } else {
-            !self.wildcard
-        }
+impl PartialOrd for MatchResult {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -73,12 +65,12 @@ impl<'a> QValueFinder<'a> {
                         {
                             Some(MatchResult {
                                 wildcard: false,
-                                q: 1.0,
+                                q: NotNan::new(1.0).unwrap(),
                             })
                         } else if tok_or_val == b"*" {
                             Some(MatchResult {
                                 wildcard: true,
-                                q: 1.0,
+                                q: NotNan::new(1.0).unwrap(),
                             })
                         } else {
                             None
@@ -117,7 +109,7 @@ impl<'a> QValueFinder<'a> {
                                     // ok to use from_utf8.
                                     let s = std::str::from_utf8(tok_or_val).ok()?;
                                     let f = s.parse::<f32>().ok()?;
-                                    cur_result.q = f.clamp(0.0, 1.0);
+                                    cur_result.q = NotNan::new(f.clamp(0.0, 1.0)).unwrap();
                                 }
                                 _ => return None,
                             }
@@ -140,7 +132,7 @@ impl<'a> QValueFinder<'a> {
     }
 
     fn may_update_best_result(&mut self) {
-        if is_better_match(self.cur_result.as_ref(), self.best_result.as_ref()) {
+        if self.cur_result.gt(&self.best_result) {
             self.best_result = self.cur_result.take();
         }
     }
@@ -268,62 +260,55 @@ mod tests {
 
     #[test]
     fn test_match_for_encoding() {
-        let res = match_for_encoding(b"*", b"gzip");
         assert_eq!(
             Some(MatchResult {
                 wildcard: true,
-                q: 1.0,
+                q: NotNan::new(1.0).unwrap(),
             }),
-            res,
+            match_for_encoding(b"*", b"gzip"),
         );
 
-        let res = match_for_encoding(b"*  ; q=0.5", b"gzip");
         assert_eq!(
             Some(MatchResult {
                 wildcard: true,
-                q: 0.5,
+                q: NotNan::new(0.5).unwrap(),
             }),
-            res
+            match_for_encoding(b"*  ; q=0.5", b"gzip")
         );
 
-        let res = match_for_encoding(b" gzip", b"gzip");
         assert_eq!(
             Some(MatchResult {
                 wildcard: false,
-                q: 1.0,
+                q: NotNan::new(1.0).unwrap(),
             }),
-            res
+            match_for_encoding(b" gzip", b"gzip")
         );
 
-        let res = match_for_encoding(b" gzip ; a=b ", b"gzip");
         assert_eq!(
             Some(MatchResult {
                 wildcard: false,
-                q: 1.0,
+                q: NotNan::new(1.0).unwrap(),
             }),
-            res
+            match_for_encoding(b" gzip ; a=b ", b"gzip")
         );
 
-        let res = match_for_encoding(b" gzip ; q=0.8 ", b"gzip");
         assert_eq!(
             Some(MatchResult {
                 wildcard: false,
-                q: 0.8,
+                q: NotNan::new(0.8).unwrap(),
             }),
-            res
+            match_for_encoding(b" gzip ; q=0.8 ", b"gzip")
         );
 
-        let res = match_for_encoding(b" x-Gzip ; q=0.8 ", b"gzip");
         assert_eq!(
             Some(MatchResult {
                 wildcard: false,
-                q: 0.8,
+                q: NotNan::new(0.8).unwrap(),
             }),
-            res
+            match_for_encoding(b" x-Gzip ; q=0.8 ", b"gzip")
         );
 
-        let res = match_for_encoding(b"br  ; q=1", b"gzip");
-        assert_eq!(None, res);
+        assert_eq!(None, match_for_encoding(b"br  ; q=1", b"gzip"));
 
         {
             let header_value = b"br  ; q=0.9 , gzip;q=0.8";
@@ -331,7 +316,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     wildcard: false,
-                    q: 0.8,
+                    q: NotNan::new(0.8).unwrap(),
                 }),
                 gzip_res
             );
@@ -340,12 +325,12 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     wildcard: false,
-                    q: 0.9,
+                    q: NotNan::new(0.9).unwrap(),
                 }),
                 br_res
             );
 
-            assert!(br_res.unwrap().better(gzip_res.as_ref().unwrap()));
+            assert!(br_res.gt(&gzip_res));
         }
 
         {
@@ -354,7 +339,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     wildcard: true,
-                    q: 1.0,
+                    q: NotNan::new(1.0).unwrap(),
                 }),
                 gzip_res
             );
@@ -363,12 +348,12 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     wildcard: false,
-                    q: 1.0,
+                    q: NotNan::new(1.0).unwrap(),
                 }),
                 br_res
             );
 
-            assert!(is_better_match(br_res.as_ref(), gzip_res.as_ref()));
+            assert!(br_res.gt(&gzip_res));
         }
 
         {
@@ -377,7 +362,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     wildcard: true,
-                    q: 1.0,
+                    q: NotNan::new(1.0).unwrap(),
                 }),
                 gzip_res
             );
@@ -386,61 +371,88 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     wildcard: false,
-                    q: 0.9,
+                    q: NotNan::new(0.9).unwrap(),
                 }),
                 br_res
             );
 
-            assert!(is_better_match(br_res.as_ref(), gzip_res.as_ref()));
+            assert!(br_res.gt(&gzip_res));
         }
     }
 
     #[test]
-    fn test_match_result_better() {
-        assert!(MatchResult {
-            wildcard: false,
-            q: 1.0,
-        }
-        .better(&MatchResult {
-            wildcard: false,
-            q: 0.9,
-        }));
+    fn test_match_result_cmp() {
+        assert_eq!(
+            Ordering::Greater,
+            MatchResult {
+                wildcard: false,
+                q: NotNan::new(1.0).unwrap(),
+            }
+            .cmp(&MatchResult {
+                wildcard: false,
+                q: NotNan::new(0.9).unwrap(),
+            })
+        );
 
-        assert!(MatchResult {
-            wildcard: true,
-            q: 1.0,
-        }
-        .better(&MatchResult {
-            wildcard: true,
-            q: 0.9,
-        }));
+        assert_eq!(
+            Ordering::Greater,
+            MatchResult {
+                wildcard: true,
+                q: NotNan::new(1.0).unwrap(),
+            }
+            .cmp(&MatchResult {
+                wildcard: true,
+                q: NotNan::new(0.9).unwrap(),
+            })
+        );
 
-        assert!(MatchResult {
-            wildcard: false,
-            q: 0.9,
-        }
-        .better(&MatchResult {
-            wildcard: true,
-            q: 1.0,
-        }));
+        assert_eq!(
+            Ordering::Equal,
+            MatchResult {
+                wildcard: true,
+                q: NotNan::new(0.9).unwrap(),
+            }
+            .cmp(&MatchResult {
+                wildcard: true,
+                q: NotNan::new(0.9).unwrap(),
+            })
+        );
 
-        assert!(!MatchResult {
-            wildcard: true,
-            q: 1.0,
-        }
-        .better(&MatchResult {
-            wildcard: false,
-            q: 0.9,
-        }));
+        assert_eq!(
+            Ordering::Equal,
+            MatchResult {
+                wildcard: false,
+                q: NotNan::new(1.0).unwrap(),
+            }
+            .cmp(&MatchResult {
+                wildcard: false,
+                q: NotNan::new(1.0).unwrap(),
+            })
+        );
 
-        assert!(!MatchResult {
-            wildcard: false,
-            q: 1.0,
-        }
-        .better(&MatchResult {
-            wildcard: false,
-            q: 1.0,
-        }));
+        assert_eq!(
+            Ordering::Greater,
+            MatchResult {
+                wildcard: false,
+                q: NotNan::new(1.0).unwrap(),
+            }
+            .cmp(&MatchResult {
+                wildcard: true,
+                q: NotNan::new(1.0).unwrap(),
+            })
+        );
+
+        assert_eq!(
+            Ordering::Less,
+            MatchResult {
+                wildcard: true,
+                q: NotNan::new(1.0).unwrap(),
+            }
+            .cmp(&MatchResult {
+                wildcard: false,
+                q: NotNan::new(0.9).unwrap(),
+            })
+        );
     }
 
     #[test]
