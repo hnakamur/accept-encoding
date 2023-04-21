@@ -9,6 +9,7 @@ pub(crate) struct QValueFinder<'a> {
     best_result: Option<MatchResult>,
 }
 
+#[derive(Debug)]
 enum State {
     SearchingEncoding,
     SeenSomeEncoding,
@@ -33,10 +34,11 @@ impl<'a> QValueFinder<'a> {
         let is_compress = bytes_eq_ignore_case(encoding, b"compress");
 
         let mut is_q_param = false;
-        while let Some(token) = self.lexer.next_token() {
+        self.lexer.ows();
+        while !self.lexer.eof() {
             match self.state {
-                State::SearchingEncoding => match token {
-                    Token::TokenOrValue(tok_or_val) => {
+                State::SearchingEncoding => {
+                    if let Some(Token::TokenOrValue(tok_or_val)) = self.lexer.token_or_value() {
                         self.cur_result = if bytes_eq_ignore_case(tok_or_val, encoding)
                             || (is_gzip && bytes_eq_ignore_case(tok_or_val, b"x-gzip"))
                             || (is_compress && bytes_eq_ignore_case(tok_or_val, b"x-compress"))
@@ -54,56 +56,73 @@ impl<'a> QValueFinder<'a> {
                             None
                         };
                         self.state = State::SeenSomeEncoding;
+                    } else {
+                        return None;
                     }
-                    _ => return None,
-                },
-                State::SeenSomeEncoding => match token {
-                    Token::Semicolon => self.state = State::SeenSemicolon,
-                    Token::Comma => {
+                }
+                State::SeenSomeEncoding => {
+                    if let Some(Token::Semicolon) = self.lexer.semicolon() {
+                        self.state = State::SeenSemicolon;
+                    } else if let Some(Token::Comma) = self.lexer.comma() {
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
+                    } else {
+                        return None;
                     }
-                    _ => return None,
-                },
-                State::SeenSemicolon => match token {
-                    Token::TokenOrValue(tok_or_val) => {
+                }
+                State::SeenSemicolon => {
+                    if let Some(Token::TokenOrValue(tok_or_val)) = self.lexer.token_or_value() {
                         is_q_param = tok_or_val == b"q";
                         self.state = State::SeenParameterName;
+                    } else {
+                        return None;
                     }
-                    _ => return None,
-                },
-                State::SeenParameterName => match token {
-                    Token::Equal => self.state = State::SeenEqual,
-                    _ => return None,
-                },
+                }
+                State::SeenParameterName => {
+                    if Some(Token::Equal) == self.lexer.equal() {
+                        self.state = State::SeenEqual;
+                    } else {
+                        return None;
+                    }
+                }
                 State::SeenEqual => {
-                    if let Some(cur_result) = self.cur_result.as_mut() {
-                        if is_q_param {
-                            match token {
-                                Token::TokenOrValue(tok_or_val) => {
-                                    // In general, HTTP header value are byte string
-                                    // (ASCII + obs-text (%x80-FF)).
-                                    // However we want a float literal here, so it's
-                                    // ok to use from_utf8.
-                                    let s = std::str::from_utf8(tok_or_val).ok()?;
-                                    let f = s.parse::<f32>().ok()?;
-                                    cur_result.q = NotNan::new(f.clamp(0.0, 1.0)).unwrap();
-                                }
-                                _ => return None,
+                    if is_q_param {
+                        if let Some(Token::TokenOrValue(tok_or_val)) = self.lexer.token_or_value() {
+                            if let Some(cur_result) = self.cur_result.as_mut() {
+                                // In general, HTTP header value are byte string
+                                // (ASCII + obs-text (%x80-FF)).
+                                // However we want a float literal here, so it's
+                                // ok to use from_utf8.
+                                let s = std::str::from_utf8(tok_or_val).ok()?;
+                                let f = s.parse::<f32>().ok()?;
+                                cur_result.q = NotNan::new(f.clamp(0.0, 1.0)).unwrap();
                             }
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        if let Some(Token::TokenOrValue(_)) = self.lexer.token_or_value() {
+                        } else if let Some(Token::DoubleQuotedString(_)) =
+                            self.lexer.double_quoted_string()
+                        {
+                        } else {
+                            return None;
                         }
                     }
                     self.state = State::SeenParameterValue;
                 }
-                State::SeenParameterValue => match token {
-                    Token::Comma => {
+                State::SeenParameterValue => {
+                    if let Some(Token::Comma) = self.lexer.comma() {
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
+                    } else if let Some(Token::Semicolon) = self.lexer.semicolon() {
+                        self.state = State::SeenSemicolon;
+                    } else {
+                        return None;
                     }
-                    Token::Semicolon => self.state = State::SeenSemicolon,
-                    _ => return None,
-                },
+                }
             }
+            self.lexer.ows();
         }
         self.may_update_best_result();
         self.best_result.take()
@@ -126,24 +145,32 @@ impl<'a> Lexer<'a> {
         Self { input, pos: 0 }
     }
 
-    fn next_token(&mut self) -> Option<Token> {
-        ows(self.input, &mut self.pos);
-        if let Some(token) = token_or_value(self.input, &mut self.pos) {
-            return Some(token);
-        }
-        if let Some(token) = double_quoted_string(self.input, &mut self.pos) {
-            return Some(token);
-        }
-        if let Some(token) = comma(self.input, &mut self.pos) {
-            return Some(token);
-        }
-        if let Some(token) = semicolon(self.input, &mut self.pos) {
-            return Some(token);
-        }
-        if let Some(token) = equal(self.input, &mut self.pos) {
-            return Some(token);
-        }
-        None
+    fn eof(&self) -> bool {
+        self.pos >= self.input.len()
+    }
+
+    fn ows(&mut self) {
+        ows(self.input, &mut self.pos)
+    }
+
+    fn comma(&mut self) -> Option<Token> {
+        comma(self.input, &mut self.pos)
+    }
+
+    fn semicolon(&mut self) -> Option<Token> {
+        semicolon(self.input, &mut self.pos)
+    }
+
+    fn equal(&mut self) -> Option<Token> {
+        equal(self.input, &mut self.pos)
+    }
+
+    fn token_or_value(&mut self) -> Option<Token> {
+        token_or_value(self.input, &mut self.pos)
+    }
+
+    fn double_quoted_string(&mut self) -> Option<Token> {
+        double_quoted_string(self.input, &mut self.pos)
     }
 }
 
