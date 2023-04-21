@@ -101,11 +101,7 @@ impl<'a> QValueFinder<'a> {
                             return None;
                         }
                     } else {
-                        if let Some(Token::TokenOrValue(_)) = self.lexer.token_or_value() {
-                        } else if let Some(Token::DoubleQuotedString(_)) =
-                            self.lexer.double_quoted_string()
-                        {
-                        } else {
+                        if self.lexer.parameter_value().is_none() {
                             return None;
                         }
                     }
@@ -169,8 +165,14 @@ impl<'a> Lexer<'a> {
         token_or_value(self.input, &mut self.pos)
     }
 
-    fn double_quoted_string(&mut self) -> Option<Token> {
-        double_quoted_string(self.input, &mut self.pos)
+    fn parameter_value(&mut self) -> Option<Token> {
+        if let Some(v) = token_or_value(self.input, &mut self.pos) {
+            Some(v)
+        } else if let Some(v) = double_quoted_string(self.input, &mut self.pos) {
+            Some(v)
+        } else {
+            None
+        }
     }
 }
 
