@@ -2,9 +2,10 @@ use std::cmp::Ordering;
 
 use ordered_float::NotNan;
 
-use crate::monolith_lexer::Lexer;
+use crate::lexer::Lexer;
 
 pub mod c;
+mod lexer;
 mod monolith_lexer;
 
 pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<MatchResult> {
