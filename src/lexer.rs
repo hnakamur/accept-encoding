@@ -1,16 +1,132 @@
-use crate::Token;
+use ordered_float::NotNan;
 
-pub(crate) struct Lexer<'a> {
+use crate::{bytes_eq_ignore_case, MatchResult, MatchType, Token};
+
+pub(crate) struct QValueFinder<'a> {
+    lexer: Lexer<'a>,
+    state: State,
+    cur_result: Option<MatchResult>,
+    best_result: Option<MatchResult>,
+}
+
+enum State {
+    SearchingEncoding,
+    SeenSomeEncoding,
+    SeenSemicolon,
+    SeenParameterName,
+    SeenEqual,
+    SeenParameterValue,
+}
+
+impl<'a> QValueFinder<'a> {
+    pub(crate) fn new(value: &'a [u8]) -> Self {
+        Self {
+            lexer: Lexer::new(value),
+            state: State::SearchingEncoding,
+            cur_result: None,
+            best_result: None,
+        }
+    }
+
+    pub(crate) fn find(&mut self, encoding: &[u8]) -> Option<MatchResult> {
+        let is_gzip = bytes_eq_ignore_case(encoding, b"gzip");
+        let is_compress = bytes_eq_ignore_case(encoding, b"compress");
+
+        let mut is_q_param = false;
+        while let Some(token) = self.lexer.next_token() {
+            match self.state {
+                State::SearchingEncoding => match token {
+                    Token::TokenOrValue(tok_or_val) => {
+                        self.cur_result = if bytes_eq_ignore_case(tok_or_val, encoding)
+                            || (is_gzip && bytes_eq_ignore_case(tok_or_val, b"x-gzip"))
+                            || (is_compress && bytes_eq_ignore_case(tok_or_val, b"x-compress"))
+                        {
+                            Some(MatchResult {
+                                match_type: MatchType::Exact,
+                                q: NotNan::new(1.0).unwrap(),
+                            })
+                        } else if tok_or_val == b"*" {
+                            Some(MatchResult {
+                                match_type: MatchType::Wildcard,
+                                q: NotNan::new(1.0).unwrap(),
+                            })
+                        } else {
+                            None
+                        };
+                        self.state = State::SeenSomeEncoding;
+                    }
+                    _ => return None,
+                },
+                State::SeenSomeEncoding => match token {
+                    Token::Semicolon => self.state = State::SeenSemicolon,
+                    Token::Comma => {
+                        self.may_update_best_result();
+                        self.state = State::SearchingEncoding;
+                    }
+                    _ => return None,
+                },
+                State::SeenSemicolon => match token {
+                    Token::TokenOrValue(tok_or_val) => {
+                        is_q_param = tok_or_val == b"q";
+                        self.state = State::SeenParameterName;
+                    }
+                    _ => return None,
+                },
+                State::SeenParameterName => match token {
+                    Token::Equal => self.state = State::SeenEqual,
+                    _ => return None,
+                },
+                State::SeenEqual => {
+                    if let Some(cur_result) = self.cur_result.as_mut() {
+                        if is_q_param {
+                            match token {
+                                Token::TokenOrValue(tok_or_val) => {
+                                    // In general, HTTP header value are byte string
+                                    // (ASCII + obs-text (%x80-FF)).
+                                    // However we want a float literal here, so it's
+                                    // ok to use from_utf8.
+                                    let s = std::str::from_utf8(tok_or_val).ok()?;
+                                    let f = s.parse::<f32>().ok()?;
+                                    cur_result.q = NotNan::new(f.clamp(0.0, 1.0)).unwrap();
+                                }
+                                _ => return None,
+                            }
+                        }
+                    }
+                    self.state = State::SeenParameterValue;
+                }
+                State::SeenParameterValue => match token {
+                    Token::Comma => {
+                        self.may_update_best_result();
+                        self.state = State::SearchingEncoding;
+                    }
+                    Token::Semicolon => self.state = State::SeenSemicolon,
+                    _ => return None,
+                },
+            }
+        }
+        self.may_update_best_result();
+        self.best_result.take()
+    }
+
+    fn may_update_best_result(&mut self) {
+        if self.cur_result.gt(&self.best_result) {
+            self.best_result = self.cur_result.take();
+        }
+    }
+}
+
+struct Lexer<'a> {
     input: &'a [u8],
     pos: usize,
 }
 
 impl<'a> Lexer<'a> {
-    pub(crate) fn new(input: &'a [u8]) -> Self {
+    fn new(input: &'a [u8]) -> Self {
         Self { input, pos: 0 }
     }
 
-    pub(crate) fn next_token(&mut self) -> Option<Token> {
+    fn next_token(&mut self) -> Option<Token> {
         ows(self.input, &mut self.pos);
         if let Some(token) = token_or_value(self.input, &mut self.pos) {
             return Some(token);
