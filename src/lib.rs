@@ -554,3 +554,26 @@ mod tests {
         assert!(!bytes_eq_ignore_case(b"gzip", b"gzi2"));
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    fn any_u8_vec(bound: usize) -> Vec<u8> {
+        let size: usize = kani::any();
+        kani::assume(size <= bound);
+
+        let mut v = Vec::<u8>::with_capacity(size);
+        for _ in 0..size {
+            v.push(kani::any());
+        }
+        v
+    }
+
+    #[kani::proof]
+    fn verify_match_for_encoding() {
+        let header_value = any_u8_vec(64);
+        let encoding = any_u8_vec(6);
+        _ = match_for_encoding(&header_value, &encoding);
+    }
+}
