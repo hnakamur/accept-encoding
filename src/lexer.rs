@@ -87,15 +87,9 @@ impl<'a> QValueFinder<'a> {
                 }
                 State::SeenEqual => {
                     if is_q_param {
-                        if let Some(Token::TokenOrValue(tok_or_val)) = self.lexer.token_or_value() {
+                        if let Some(Token::QValue(q)) = self.lexer.q_value() {
                             if let Some(cur_result) = self.cur_result.as_mut() {
-                                // In general, HTTP header value are byte string
-                                // (ASCII + obs-text (%x80-FF)).
-                                // However we want a float literal here, so it's
-                                // ok to use from_utf8.
-                                let s = std::str::from_utf8(tok_or_val).ok()?;
-                                let f = s.parse::<f32>().ok()?;
-                                cur_result.q = NotNan::new(f.clamp(0.0, 1.0)).unwrap();
+                                cur_result.q = q;
                             }
                         } else {
                             return None;
@@ -163,6 +157,10 @@ impl<'a> Lexer<'a> {
 
     fn token_or_value(&mut self) -> Option<Token> {
         token_or_value(self.input, &mut self.pos)
+    }
+
+    fn q_value(&mut self) -> Option<Token> {
+        q_value(self.input, &mut self.pos)
     }
 
     fn parameter_value(&mut self) -> Option<Token> {
@@ -253,6 +251,56 @@ fn double_quoted_string<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a
     None
 }
 
+const Q_VALUE_FRAC_MAX_DIGITS: u32 = 3;
+
+fn q_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
+    let mut i = *pos;
+    if i < input.len() {
+        let int_part = match input[i] {
+            b'0' => 0,
+            b'1' => 1,
+            _ => return None,
+        };
+        i += 1;
+        let mut frac_part: i32 = 0;
+        if i < input.len() && input[i] == b'.' {
+            i += 1;
+            if int_part == 0 {
+                let mut done = false;
+                for _ in 0..Q_VALUE_FRAC_MAX_DIGITS as usize {
+                    frac_part *= 10;
+                    if !done && i < input.len() {
+                        let c = input[i];
+                        match c {
+                            b'0'..=b'9' => {
+                                frac_part += (c - b'0') as i32;
+                                i += 1;
+                            }
+                            _ => done = true,
+                        }
+                    }
+                }
+            } else {
+                for _ in 0..Q_VALUE_FRAC_MAX_DIGITS as usize {
+                    if i < input.len() && input[i] == b'0' {
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        let q = if frac_part == 0 {
+            int_part as f32
+        } else {
+            int_part as f32 + frac_part as f32 / 10_i32.pow(Q_VALUE_FRAC_MAX_DIGITS) as f32
+        };
+        *pos = i;
+        return Some(Token::QValue(NotNan::new(q).unwrap()));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,6 +373,98 @@ mod tests {
             let mut pos = 0;
             assert_eq!(None, double_quoted_string(b"\"", &mut pos));
             assert_eq!(0, pos);
+        }
+    }
+
+    #[test]
+    fn test_q_value() {
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                q_value(b"1", &mut pos)
+            );
+            assert_eq!(1, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                q_value(b"1.", &mut pos)
+            );
+            assert_eq!(2, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                q_value(b"1.0", &mut pos)
+            );
+            assert_eq!(3, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                q_value(b"1.01", &mut pos)
+            );
+            assert_eq!(3, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                q_value(b"1.000", &mut pos)
+            );
+            assert_eq!(5, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                q_value(b"1.0000", &mut pos)
+            );
+            assert_eq!(5, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(0.0).unwrap())),
+                q_value(b"0", &mut pos)
+            );
+            assert_eq!(1, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(0.0).unwrap())),
+                q_value(b"0.", &mut pos)
+            );
+            assert_eq!(2, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(0.8).unwrap())),
+                q_value(b"0.8", &mut pos)
+            );
+            assert_eq!(3, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(0.82).unwrap())),
+                q_value(b"0.82", &mut pos)
+            );
+            assert_eq!(4, pos);
+        }
+        {
+            let mut pos = 0;
+            assert_eq!(
+                Some(Token::QValue(NotNan::new(0.823).unwrap())),
+                q_value(b"0.8235", &mut pos)
+            );
+            assert_eq!(5, pos);
         }
     }
 }

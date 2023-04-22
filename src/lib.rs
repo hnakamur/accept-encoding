@@ -63,6 +63,7 @@ enum Token<'a> {
     Comma,
     Semicolon,
     Equal,
+    QValue(NotNan<f32>),
 }
 
 #[cfg(test)]
