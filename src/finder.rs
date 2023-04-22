@@ -39,7 +39,7 @@ impl<'a> QValueFinder<'a> {
         while !self.lexer.eof() {
             match self.state {
                 State::SearchingEncoding => {
-                    if let Some(Token::TokenOrValue(tok_or_val)) = self.lexer.token_or_value() {
+                    if let Some(Token::Token(tok_or_val)) = self.lexer.token() {
                         self.cur_result = if bytes_eq_ignore_case(tok_or_val, encoding)
                             || (is_gzip && bytes_eq_ignore_case(tok_or_val, b"x-gzip"))
                             || (is_compress && bytes_eq_ignore_case(tok_or_val, b"x-compress"))
@@ -72,7 +72,7 @@ impl<'a> QValueFinder<'a> {
                     }
                 }
                 State::SeenSemicolon => {
-                    if let Some(Token::TokenOrValue(tok_or_val)) = self.lexer.token_or_value() {
+                    if let Some(Token::Token(tok_or_val)) = self.lexer.token() {
                         is_q_param = tok_or_val == b"q";
                         self.state = State::SeenParameterName;
                     } else {
@@ -154,7 +154,7 @@ struct Lexer<'a> {
 
 #[derive(Debug, PartialEq)]
 enum Token<'a> {
-    TokenOrValue(&'a [u8]),
+    Token(&'a [u8]),
     DoubleQuotedString(&'a [u8]),
     Comma,
     Semicolon,
@@ -187,8 +187,8 @@ impl<'a> Lexer<'a> {
         equal(self.input, &mut self.pos)
     }
 
-    fn token_or_value(&mut self) -> Option<Token> {
-        token_or_value(self.input, &mut self.pos)
+    fn token(&mut self) -> Option<Token> {
+        token(self.input, &mut self.pos)
     }
 
     fn q_value(&mut self) -> Option<Token> {
@@ -196,7 +196,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn parameter_value(&mut self) -> Option<Token> {
-        if let Some(v) = token_or_value(self.input, &mut self.pos) {
+        if let Some(v) = token(self.input, &mut self.pos) {
             Some(v)
         } else if let Some(v) = double_quoted_string(self.input, &mut self.pos) {
             Some(v)
@@ -242,7 +242,7 @@ fn equal<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
     }
 }
 
-fn token_or_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
+fn token<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
     let mut i = *pos;
     while i < input.len() {
         match input[i] {
@@ -255,7 +255,7 @@ fn token_or_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
     } else {
         let v = &input[*pos..i];
         *pos = i;
-        Some(Token::TokenOrValue(v))
+        Some(Token::Token(v))
     }
 }
 
@@ -378,15 +378,12 @@ mod tests {
     fn test_token_or_value() {
         {
             let mut pos = 0;
-            assert_eq!(
-                Some(Token::TokenOrValue(b"foo")),
-                token_or_value(b"foo,", &mut pos)
-            );
+            assert_eq!(Some(Token::Token(b"foo")), token(b"foo,", &mut pos));
             assert_eq!(3, pos);
         }
         {
             let mut pos = 0;
-            assert_eq!(None, token_or_value(b",", &mut pos));
+            assert_eq!(None, token(b",", &mut pos));
             assert_eq!(0, pos);
         }
     }
