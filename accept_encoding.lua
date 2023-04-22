@@ -1,5 +1,5 @@
 local ffi = require "ffi"
-local S = ffi.load("accept_encoding_normalizer")
+local S = ffi.load("accept_encoding")
 
 ffi.cdef[[
     typedef struct {
