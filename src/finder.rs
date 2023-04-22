@@ -95,10 +95,8 @@ impl<'a> QValueFinder<'a> {
                         } else {
                             return None;
                         }
-                    } else {
-                        if self.lexer.parameter_value().is_none() {
-                            return None;
-                        }
+                    } else if self.lexer.parameter_value().is_none() {
+                        return None;
                     }
                     self.state = State::SeenParameterValue;
                 }
@@ -143,7 +141,7 @@ fn byte_eq_ignore_case(b1: u8, b2: u8) -> bool {
     b1 == b2 || {
         let b1_not_upper = b1 | 0b010_0000;
         let b2_not_upper = b2 | 0b010_0000;
-        b1_not_upper >= b'a' && b1_not_upper <= b'z' && b1_not_upper == b2_not_upper
+        b1_not_upper.is_ascii_lowercase() && b1_not_upper == b2_not_upper
     }
 }
 
@@ -198,10 +196,8 @@ impl<'a> Lexer<'a> {
     fn parameter_value(&mut self) -> Option<Token> {
         if let Some(v) = token(self.input, &mut self.pos) {
             Some(v)
-        } else if let Some(v) = double_quoted_string(self.input, &mut self.pos) {
-            Some(v)
         } else {
-            None
+            double_quoted_string(self.input, &mut self.pos)
         }
     }
 }
