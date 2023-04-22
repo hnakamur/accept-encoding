@@ -1,4 +1,4 @@
-use accept_encoding::{match_for_encoding, match_for_encoding_monolith_for_benchmark};
+use accept_encoding::match_for_encoding;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn bench_fibs(c: &mut Criterion) {
@@ -8,14 +8,6 @@ fn bench_fibs(c: &mut Criterion) {
     for i in 0..input_values.len() {
         group.bench_with_input(BenchmarkId::new("modular_parser", i), &i, |b, i| {
             b.iter(|| black_box(match_for_encoding(input_values[*i], encoding)))
-        });
-        group.bench_with_input(BenchmarkId::new("monolith_parser", i), &i, |b, i| {
-            b.iter(|| {
-                black_box(match_for_encoding_monolith_for_benchmark(
-                    input_values[*i],
-                    encoding,
-                ))
-            })
         });
     }
 }

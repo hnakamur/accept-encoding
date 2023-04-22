@@ -6,14 +6,9 @@ use lexer::QValueFinder;
 
 pub mod c;
 mod lexer;
-mod monolith_lexer;
 
 pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<MatchResult> {
     QValueFinder::new(header_value).find(encoding)
-}
-
-pub fn match_for_encoding_monolith_for_benchmark(header_value: &[u8], encoding: &[u8]) -> Option<MatchResult> {
-    monolith_lexer::QValueFinder::new(header_value).find(encoding)
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
