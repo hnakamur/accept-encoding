@@ -270,7 +270,6 @@ fn q_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
                 for _ in 0..Q_VALUE_FRAC_MAX_DIGITS as usize {
                     if i < input.len() {
                         let c = input[i];
-                        dbg!(i, c);
                         match c {
                             b'0'..=b'9' => {
                                 millis *= 10;

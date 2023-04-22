@@ -4,7 +4,7 @@ local S = ffi.load("accept_encoding")
 ffi.cdef[[
     typedef struct {
         int32_t match_type;
-        float q;
+        double q;
     } EncodingMatchResult;
 
     EncodingMatchResult ae_match(

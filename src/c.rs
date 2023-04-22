@@ -12,7 +12,7 @@ pub const RUST_MATCH_TYPE_EXACT: i32 = 2;
 #[repr(C)]
 pub struct EncodingMatchResult {
     match_type: i32,
-    q: f32,
+    q: f64,
 }
 
 #[no_mangle]

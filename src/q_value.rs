@@ -18,20 +18,20 @@ impl QValue {
     }
 }
 
-impl TryFrom<f32> for QValue {
+impl TryFrom<f64> for QValue {
     type Error = InvaliQValueError;
     #[inline]
-    fn try_from(v: f32) -> Result<Self, Self::Error> {
+    fn try_from(v: f64) -> Result<Self, Self::Error> {
         if v.is_nan() || v < 0.0 || v > 1.0 {
             Err(InvaliQValueError)
         } else {
-            QValue::from_millis((v * 10u16.pow(Q_VALUE_FRAC_MAX_DIGITS) as f32) as u16)
+            QValue::from_millis((v * 10u16.pow(Q_VALUE_FRAC_MAX_DIGITS) as f64) as u16)
         }
     }
 }
 
-impl From<QValue> for f32 {
-    fn from(source: QValue) -> f32 {
-        source.millis as f32 / 10_u32.pow(Q_VALUE_FRAC_MAX_DIGITS) as f32
+impl From<QValue> for f64 {
+    fn from(source: QValue) -> f64 {
+        source.millis as f64 / 10_u32.pow(Q_VALUE_FRAC_MAX_DIGITS) as f64
     }
 }
