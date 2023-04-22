@@ -246,8 +246,28 @@ fn token<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
     let mut i = *pos;
     while i < input.len() {
         match input[i] {
-            b' ' | b'\t' | b',' | b';' | b'=' | b'"' => break,
-            _ => i += 1,
+            // token = 1*tchar
+            // tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." /
+            //         "^" / "_" / "`" / "|" / "~" / DIGIT / ALPHA
+            b'!'
+            | b'#'
+            | b'$'
+            | b'%'
+            | b'&'
+            | b'\''
+            | b'*'
+            | b'+'
+            | b'-'
+            | b'.'
+            | b'^'
+            | b'_'
+            | b'`'
+            | b'|'
+            | b'~'
+            | b'0'..=b'9'
+            | b'A'..=b'Z'
+            | b'a'..=b'z' => i += 1,
+            _ => break,
         }
     }
     if i == *pos {
