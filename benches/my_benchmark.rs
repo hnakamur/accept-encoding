@@ -13,30 +13,30 @@ fn bench_fibs(c: &mut Criterion) {
 }
 
 #[rustfmt::skip]
-const TCHAR_TABLE: [u8; 256] = [
+const TCHAR_TABLE: [bool; 256] = [
     // tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." /
     //         "^" / "_" / "`" / "|" / "~" / DIGIT / ALPHA
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, true,  false, true,  true,  true,  true,  true,  false, false, true,  true,  false, true,  true,  false,
+    true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  false, false, false, false, false, false,
+    false, true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,
+    true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  false, false, false, true,  true,
+    true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,
+    true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  false, true,  false, true,  false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
 ];
 
 #[inline]
 fn is_tchar_with_table(c: u8) -> bool {
-    TCHAR_TABLE[c as usize] != 0
+    TCHAR_TABLE[c as usize]
 }
 
 #[inline]
