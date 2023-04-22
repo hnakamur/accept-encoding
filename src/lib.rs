@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
 
-use ordered_float::NotNan;
-
 use lexer::QValueFinder;
+use q_value::QValue;
 
 pub mod c;
 mod lexer;
+mod q_value;
 
 pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<MatchResult> {
     QValueFinder::new(header_value).find(encoding)
@@ -20,7 +20,7 @@ pub enum MatchType {
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct MatchResult {
     pub match_type: MatchType,
-    pub q: NotNan<f32>,
+    pub q: QValue,
 }
 
 impl Ord for MatchResult {
@@ -63,7 +63,7 @@ enum Token<'a> {
     Comma,
     Semicolon,
     Equal,
-    QValue(NotNan<f32>),
+    QValue(QValue),
 }
 
 #[cfg(test)]
@@ -75,7 +75,7 @@ mod tests {
         assert_eq!(
             Some(MatchResult {
                 match_type: MatchType::Wildcard,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             }),
             match_for_encoding(b"*", b"gzip"),
         );
@@ -83,7 +83,7 @@ mod tests {
         assert_eq!(
             Some(MatchResult {
                 match_type: MatchType::Wildcard,
-                q: NotNan::new(0.5).unwrap(),
+                q: QValue::try_from(0.5).unwrap(),
             }),
             match_for_encoding(b"*  ; q=0.5", b"gzip")
         );
@@ -91,7 +91,7 @@ mod tests {
         assert_eq!(
             Some(MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             }),
             match_for_encoding(b" gzip", b"gzip")
         );
@@ -99,7 +99,7 @@ mod tests {
         assert_eq!(
             Some(MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             }),
             match_for_encoding(b" gzip ; a=b ", b"gzip")
         );
@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(
             Some(MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(0.8).unwrap(),
+                q: QValue::try_from(0.8).unwrap(),
             }),
             match_for_encoding(b" gzip ; q=0.8 ", b"gzip")
         );
@@ -115,7 +115,7 @@ mod tests {
         assert_eq!(
             Some(MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(0.8).unwrap(),
+                q: QValue::try_from(0.8).unwrap(),
             }),
             match_for_encoding(b" x-Gzip ; q=0.8 ", b"gzip")
         );
@@ -128,7 +128,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     match_type: MatchType::Exact,
-                    q: NotNan::new(0.8).unwrap(),
+                    q: QValue::try_from(0.8).unwrap(),
                 }),
                 gzip_res
             );
@@ -137,7 +137,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     match_type: MatchType::Exact,
-                    q: NotNan::new(0.9).unwrap(),
+                    q: QValue::try_from(0.9).unwrap(),
                 }),
                 br_res
             );
@@ -151,7 +151,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     match_type: MatchType::Wildcard,
-                    q: NotNan::new(1.0).unwrap(),
+                    q: QValue::try_from(1.0).unwrap(),
                 }),
                 gzip_res
             );
@@ -160,7 +160,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     match_type: MatchType::Exact,
-                    q: NotNan::new(1.0).unwrap(),
+                    q: QValue::try_from(1.0).unwrap(),
                 }),
                 br_res
             );
@@ -174,7 +174,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     match_type: MatchType::Wildcard,
-                    q: NotNan::new(1.0).unwrap(),
+                    q: QValue::try_from(1.0).unwrap(),
                 }),
                 gzip_res
             );
@@ -183,7 +183,7 @@ mod tests {
             assert_eq!(
                 Some(MatchResult {
                     match_type: MatchType::Exact,
-                    q: NotNan::new(0.9).unwrap(),
+                    q: QValue::try_from(0.9).unwrap(),
                 }),
                 br_res
             );
@@ -198,11 +198,11 @@ mod tests {
             Ordering::Greater,
             MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             }
             .cmp(&MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(0.9).unwrap(),
+                q: QValue::try_from(0.9).unwrap(),
             })
         );
 
@@ -210,11 +210,11 @@ mod tests {
             Ordering::Greater,
             MatchResult {
                 match_type: MatchType::Wildcard,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             }
             .cmp(&MatchResult {
                 match_type: MatchType::Wildcard,
-                q: NotNan::new(0.9).unwrap(),
+                q: QValue::try_from(0.9).unwrap(),
             })
         );
 
@@ -222,11 +222,11 @@ mod tests {
             Ordering::Equal,
             MatchResult {
                 match_type: MatchType::Wildcard,
-                q: NotNan::new(0.9).unwrap(),
+                q: QValue::try_from(0.9).unwrap(),
             }
             .cmp(&MatchResult {
                 match_type: MatchType::Wildcard,
-                q: NotNan::new(0.9).unwrap(),
+                q: QValue::try_from(0.9).unwrap(),
             })
         );
 
@@ -234,11 +234,11 @@ mod tests {
             Ordering::Equal,
             MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             }
             .cmp(&MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             })
         );
 
@@ -246,11 +246,11 @@ mod tests {
             Ordering::Greater,
             MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             }
             .cmp(&MatchResult {
                 match_type: MatchType::Wildcard,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             })
         );
 
@@ -258,11 +258,11 @@ mod tests {
             Ordering::Less,
             MatchResult {
                 match_type: MatchType::Wildcard,
-                q: NotNan::new(1.0).unwrap(),
+                q: QValue::try_from(1.0).unwrap(),
             }
             .cmp(&MatchResult {
                 match_type: MatchType::Exact,
-                q: NotNan::new(0.9).unwrap(),
+                q: QValue::try_from(0.9).unwrap(),
             })
         );
     }

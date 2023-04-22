@@ -1,6 +1,8 @@
-use ordered_float::NotNan;
-
-use crate::{bytes_eq_ignore_case, MatchResult, MatchType, Token};
+use crate::{
+    bytes_eq_ignore_case,
+    q_value::{QValue, Q_VALUE_FRAC_MAX_DIGITS},
+    MatchResult, MatchType, Token,
+};
 
 pub(crate) struct QValueFinder<'a> {
     lexer: Lexer<'a>,
@@ -45,12 +47,12 @@ impl<'a> QValueFinder<'a> {
                         {
                             Some(MatchResult {
                                 match_type: MatchType::Exact,
-                                q: NotNan::new(1.0).unwrap(),
+                                q: QValue::from_millis(1000).unwrap(),
                             })
                         } else if tok_or_val == b"*" {
                             Some(MatchResult {
                                 match_type: MatchType::Wildcard,
-                                q: NotNan::new(1.0).unwrap(),
+                                q: QValue::from_millis(1000).unwrap(),
                             })
                         } else {
                             None
@@ -251,38 +253,38 @@ fn double_quoted_string<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a
     None
 }
 
-const Q_VALUE_FRAC_MAX_DIGITS: u32 = 3;
-
 fn q_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
     let mut i = *pos;
     if i < input.len() {
-        let int_part = match input[i] {
+        let mut millis: u16 = match input[i] {
             b'0' => 0,
             b'1' => 1,
             _ => return None,
         };
         i += 1;
-        let mut frac_part: i32 = 0;
+        let mut frac_start = i;
         if i < input.len() && input[i] == b'.' {
             i += 1;
-            if int_part == 0 {
-                let mut done = false;
+            frac_start = i;
+            if millis == 0 {
                 for _ in 0..Q_VALUE_FRAC_MAX_DIGITS as usize {
-                    frac_part *= 10;
-                    if !done && i < input.len() {
+                    if i < input.len() {
                         let c = input[i];
+                        dbg!(i, c);
                         match c {
                             b'0'..=b'9' => {
-                                frac_part += (c - b'0') as i32;
+                                millis *= 10;
+                                millis += (c - b'0') as u16;
                                 i += 1;
                             }
-                            _ => done = true,
+                            _ => break,
                         }
                     }
                 }
             } else {
                 for _ in 0..Q_VALUE_FRAC_MAX_DIGITS as usize {
                     if i < input.len() && input[i] == b'0' {
+                        millis *= 10;
                         i += 1;
                     } else {
                         break;
@@ -290,13 +292,11 @@ fn q_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<Token<'a>> {
                 }
             }
         }
-        let q = if frac_part == 0 {
-            int_part as f32
-        } else {
-            int_part as f32 + frac_part as f32 / 10_i32.pow(Q_VALUE_FRAC_MAX_DIGITS) as f32
-        };
+        for _ in i - frac_start..Q_VALUE_FRAC_MAX_DIGITS as usize {
+            millis *= 10;
+        }
         *pos = i;
-        return Some(Token::QValue(NotNan::new(q).unwrap()));
+        return Some(Token::QValue(QValue::from_millis(millis).unwrap()));
     }
     None
 }
@@ -381,7 +381,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                Some(Token::QValue(QValue::try_from(1.0).unwrap())),
                 q_value(b"1", &mut pos)
             );
             assert_eq!(1, pos);
@@ -389,7 +389,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                Some(Token::QValue(QValue::try_from(1.0).unwrap())),
                 q_value(b"1.", &mut pos)
             );
             assert_eq!(2, pos);
@@ -397,7 +397,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                Some(Token::QValue(QValue::try_from(1.0).unwrap())),
                 q_value(b"1.0", &mut pos)
             );
             assert_eq!(3, pos);
@@ -405,7 +405,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                Some(Token::QValue(QValue::try_from(1.0).unwrap())),
                 q_value(b"1.01", &mut pos)
             );
             assert_eq!(3, pos);
@@ -413,7 +413,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                Some(Token::QValue(QValue::try_from(1.0).unwrap())),
                 q_value(b"1.000", &mut pos)
             );
             assert_eq!(5, pos);
@@ -421,7 +421,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(1.0).unwrap())),
+                Some(Token::QValue(QValue::try_from(1.0).unwrap())),
                 q_value(b"1.0000", &mut pos)
             );
             assert_eq!(5, pos);
@@ -429,7 +429,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(0.0).unwrap())),
+                Some(Token::QValue(QValue::try_from(0.0).unwrap())),
                 q_value(b"0", &mut pos)
             );
             assert_eq!(1, pos);
@@ -437,7 +437,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(0.0).unwrap())),
+                Some(Token::QValue(QValue::try_from(0.0).unwrap())),
                 q_value(b"0.", &mut pos)
             );
             assert_eq!(2, pos);
@@ -445,7 +445,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(0.8).unwrap())),
+                Some(Token::QValue(QValue::try_from(0.8).unwrap())),
                 q_value(b"0.8", &mut pos)
             );
             assert_eq!(3, pos);
@@ -453,7 +453,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(0.82).unwrap())),
+                Some(Token::QValue(QValue::try_from(0.82).unwrap())),
                 q_value(b"0.82", &mut pos)
             );
             assert_eq!(4, pos);
@@ -461,7 +461,7 @@ mod tests {
         {
             let mut pos = 0;
             assert_eq!(
-                Some(Token::QValue(NotNan::new(0.823).unwrap())),
+                Some(Token::QValue(QValue::try_from(0.823).unwrap())),
                 q_value(b"0.8235", &mut pos)
             );
             assert_eq!(5, pos);
