@@ -1,10 +1,10 @@
 use std::cmp::Ordering;
 
-use lexer::QValueFinder;
+use finder::QValueFinder;
 use q_value::QValue;
 
 pub mod c;
-mod lexer;
+mod finder;
 mod q_value;
 
 pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<MatchResult> {
@@ -33,37 +33,6 @@ impl PartialOrd for MatchResult {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
-}
-
-fn bytes_eq_ignore_case(bytes1: &[u8], bytes2: &[u8]) -> bool {
-    if bytes1.len() != bytes2.len() {
-        return false;
-    }
-    for i in 0..bytes1.len() {
-        if !byte_eq_ignore_case(bytes1[i], bytes2[i]) {
-            return false;
-        }
-    }
-    true
-}
-
-fn byte_eq_ignore_case(b1: u8, b2: u8) -> bool {
-    // Apapted from https://docs.rs/ascii/1.1.0/src/ascii/ascii_char.rs.html#726-732
-    b1 == b2 || {
-        let b1_not_upper = b1 | 0b010_0000;
-        let b2_not_upper = b2 | 0b010_0000;
-        b1_not_upper >= b'a' && b1_not_upper <= b'z' && b1_not_upper == b2_not_upper
-    }
-}
-
-#[derive(Debug, PartialEq)]
-enum Token<'a> {
-    TokenOrValue(&'a [u8]),
-    DoubleQuotedString(&'a [u8]),
-    Comma,
-    Semicolon,
-    Equal,
-    QValue(QValue),
 }
 
 #[cfg(test)]
@@ -265,38 +234,5 @@ mod tests {
                 q: QValue::try_from(0.9).unwrap(),
             })
         );
-    }
-
-    #[test]
-    fn test_bytes_eq_ignore_case() {
-        assert!(bytes_eq_ignore_case(b"gzip", b"gzip"));
-        assert!(bytes_eq_ignore_case(b"gzip", b"GZip"));
-        assert!(bytes_eq_ignore_case(b"bzip2", b"bziP2"));
-
-        assert!(!bytes_eq_ignore_case(b"gzip", b"zip"));
-        assert!(!bytes_eq_ignore_case(b"gzip", b"gzi2"));
-    }
-}
-
-#[cfg(kani)]
-mod verification {
-    use super::*;
-
-    fn any_u8_vec(bound: usize) -> Vec<u8> {
-        let size: usize = kani::any();
-        kani::assume(size <= bound);
-
-        let mut v = Vec::<u8>::with_capacity(size);
-        for _ in 0..size {
-            v.push(kani::any());
-        }
-        v
-    }
-
-    #[kani::proof]
-    fn verify_match_for_encoding() {
-        let header_value = any_u8_vec(64);
-        let encoding = any_u8_vec(6);
-        _ = match_for_encoding(&header_value, &encoding);
     }
 }
