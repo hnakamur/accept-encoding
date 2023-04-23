@@ -6,6 +6,7 @@ use q_value::QValue;
 pub mod c;
 mod encoding_matcher;
 mod lexer;
+mod mime_type_matcher;
 mod q_value;
 
 pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<EncodingMatch> {
@@ -31,6 +32,31 @@ impl Ord for EncodingMatch {
 }
 
 impl PartialOrd for EncodingMatch {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+pub enum MimeTypeMatchType {
+    MainTypeWildcard,
+    SubTypeWildcard,
+    Exact,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub struct MimeTypeMatch {
+    pub match_type: MimeTypeMatchType,
+    pub q: QValue,
+}
+
+impl Ord for MimeTypeMatch {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.match_type, &self.q).cmp(&(other.match_type, &other.q))
+    }
+}
+
+impl PartialOrd for MimeTypeMatch {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }

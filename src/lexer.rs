@@ -13,6 +13,7 @@ pub(crate) enum LexerToken<'a> {
     Semicolon,
     Equal,
     QValue(QValue),
+    Slash,
 }
 
 impl<'a> Lexer<'a> {
@@ -26,6 +27,10 @@ impl<'a> Lexer<'a> {
 
     pub(crate) fn ows(&mut self) {
         ows(self.input, &mut self.pos)
+    }
+
+    pub(crate) fn slash(&mut self) -> Option<LexerToken> {
+        slash(self.input, &mut self.pos)
     }
 
     pub(crate) fn comma(&mut self) -> Option<LexerToken> {
@@ -63,6 +68,15 @@ fn ows(input: &[u8], pos: &mut usize) {
             b' ' | b'\t' => *pos += 1,
             _ => return,
         }
+    }
+}
+
+fn slash<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+    if *pos < input.len() && input[*pos] == b'/' {
+        *pos += 1;
+        Some(LexerToken::Slash)
+    } else {
+        None
     }
 }
 
