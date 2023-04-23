@@ -1,7 +1,7 @@
 use crate::{
     lexer::{Lexer, LexerToken},
     q_value::QValue,
-    EncodingMatch, MatchType,
+    EncodingMatch, EncodingMatchType,
 };
 
 pub(crate) struct EncodingMatcher<'a> {
@@ -45,12 +45,12 @@ impl<'a> EncodingMatcher<'a> {
                             || (is_compress && bytes_eq_ignore_case(tok_or_val, b"x-compress"))
                         {
                             Some(EncodingMatch {
-                                match_type: MatchType::Exact,
+                                match_type: EncodingMatchType::Exact,
                                 q: QValue::from_millis(1000).unwrap(),
                             })
                         } else if tok_or_val == b"*" {
                             Some(EncodingMatch {
-                                match_type: MatchType::Wildcard,
+                                match_type: EncodingMatchType::Wildcard,
                                 q: QValue::from_millis(1000).unwrap(),
                             })
                         } else {
