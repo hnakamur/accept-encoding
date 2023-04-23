@@ -63,7 +63,7 @@ mod tests {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(1.0).unwrap(),
             }),
-            match_for_encoding(b" gzip", b"gzip")
+            match_for_encoding(b"gzip", b"gzip")
         );
 
         assert_eq!(
@@ -71,7 +71,7 @@ mod tests {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(1.0).unwrap(),
             }),
-            match_for_encoding(b" gzip ; a=b ", b"gzip")
+            match_for_encoding(b"gzip ; a=b", b"gzip")
         );
 
         assert_eq!(
@@ -79,7 +79,7 @@ mod tests {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(0.8).unwrap(),
             }),
-            match_for_encoding(b" gzip ; q=0.8 ", b"gzip")
+            match_for_encoding(b"gzip ; q=0.8", b"gzip")
         );
 
         assert_eq!(
@@ -87,7 +87,7 @@ mod tests {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(0.8).unwrap(),
             }),
-            match_for_encoding(b" x-Gzip ; q=0.8 ", b"gzip")
+            match_for_encoding(b"x-Gzip ; q=0.8", b"gzip")
         );
 
         assert_eq!(None, match_for_encoding(b"br  ; q=1", b"gzip"));
@@ -159,6 +159,18 @@ mod tests {
             );
 
             assert!(br_res.gt(&gzip_res));
+        }
+
+        {
+            let header_value = b"gzip; q =0.9";
+            let gzip_res = match_for_encoding(header_value, b"gzip");
+            assert_eq!(None, gzip_res);
+        }
+
+        {
+            let header_value = b"gzip; q= 0.9";
+            let gzip_res = match_for_encoding(header_value, b"gzip");
+            assert_eq!(None, gzip_res);
         }
     }
 

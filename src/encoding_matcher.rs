@@ -36,7 +36,6 @@ impl<'a> EncodingMatcher<'a> {
         let is_compress = bytes_eq_ignore_case(encoding, b"compress");
 
         let mut is_q_param = false;
-        self.lexer.ows();
         while !self.lexer.eof() {
             match self.state {
                 State::SearchingEncoding => {
@@ -63,9 +62,12 @@ impl<'a> EncodingMatcher<'a> {
                     }
                 }
                 State::SeenSomeEncoding => {
+                    self.lexer.ows();
                     if let Some(LexerToken::Semicolon) = self.lexer.semicolon() {
+                        self.lexer.ows();
                         self.state = State::SeenSemicolon;
                     } else if let Some(LexerToken::Comma) = self.lexer.comma() {
+                        self.lexer.ows();
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
                     } else {
@@ -102,17 +104,19 @@ impl<'a> EncodingMatcher<'a> {
                     self.state = State::SeenParameterValue;
                 }
                 State::SeenParameterValue => {
+                    self.lexer.ows();
                     if let Some(LexerToken::Comma) = self.lexer.comma() {
+                        self.lexer.ows();
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
                     } else if let Some(LexerToken::Semicolon) = self.lexer.semicolon() {
+                        self.lexer.ows();
                         self.state = State::SeenSemicolon;
                     } else {
                         return None;
                     }
                 }
             }
-            self.lexer.ows();
         }
         self.may_update_best_result();
         self.best_result.take()
