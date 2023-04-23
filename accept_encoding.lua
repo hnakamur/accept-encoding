@@ -5,24 +5,45 @@ ffi.cdef[[
     typedef struct {
         int32_t match_type;
         double q;
-    } AeEncodingMatch;
+    } CEncodingMatch;
 
-    AeEncodingMatch ae_match(
+    CEncodingMatch c_match_encoding(
         const char *header_value, size_t header_value_len,
         const char *encoding, size_t encoding_len);
     
-    int ae_is_better_match_than(AeEncodingMatch res1, AeEncodingMatch res2);
+    int c_is_better_encoding_match(CEncodingMatch res1, CEncodingMatch res2);
+
+    typedef struct {
+        int32_t match_type;
+        double q;
+    } CMimeTypeMatch;
+
+    CMimeTypeMatch c_match_mime_type(
+        const char *header_value, size_t header_value_len,
+        const char *mime_type, size_t mime_type_len);
+    
+    int c_is_better_mime_type_match(CMimeTypeMatch res1, CMimeTypeMatch res2);
 ]]
 
-local function ae_match(header_value, encoding)
-    return S.ae_match(header_value, #header_value, encoding, #encoding)
+local function match_encoding(header_value, encoding)
+    return S.c_match_encoding(header_value, #header_value, encoding, #encoding)
 end
 
-local function ae_is_better_match_than(res1, res2)
-    return S.ae_is_better_match_than(res1, res2)
+local function is_better_encoding_match(res1, res2)
+    return S.c_is_better_encoding_match(res1, res2)
+end
+
+local function match_mime_type(header_value, mime_type)
+    return S.c_match_mime_type(header_value, #header_value, mime_type, #mime_type)
+end
+
+local function is_better_mime_type_match(res1, res2)
+    return S.c_is_better_mime_type_match(res1, res2)
 end
 
 return {
-    match = ae_match,
-    is_better_match_than = ae_is_better_match_than,
+    match_encoding = match_encoding,
+    is_better_encoding_match = is_better_encoding_match,
+    match_mime_type = match_mime_type,
+    is_better_mime_type_match = is_better_mime_type_match,
 }

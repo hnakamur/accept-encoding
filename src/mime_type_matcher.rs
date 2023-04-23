@@ -1,14 +1,46 @@
+use std::cmp::Ordering;
+
 use crate::{
-    lexer::{Lexer, LexerToken},
+    byte_slice::bytes_eq_ignore_case,
+    lexer::{comma, equal, ows, parameter_value, q_value, semicolon, slash, token, LexerToken},
     q_value::QValue,
-    MimeTypeMatch, MimeTypeMatchType,
 };
 
+pub fn match_for_mime_type(header_value: &[u8], mime_type: &[u8]) -> Option<MimeTypeMatch> {
+    MimeTypeMatcher::new(header_value).match_mime_type(mime_type)
+}
+
 pub(crate) struct MimeTypeMatcher<'a> {
-    lexer: Lexer<'a>,
+    value: &'a [u8],
+    pos: usize,
     state: State,
     cur_result: Option<MimeTypeMatch>,
     best_result: Option<MimeTypeMatch>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+pub enum MimeTypeMatchType {
+    MainTypeWildcard,
+    SubTypeWildcard,
+    Exact,
+}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub struct MimeTypeMatch {
+    pub match_type: MimeTypeMatchType,
+    pub q: QValue,
+}
+
+impl Ord for MimeTypeMatch {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.match_type, &self.q).cmp(&(other.match_type, &other.q))
+    }
+}
+
+impl PartialOrd for MimeTypeMatch {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[derive(Debug)]
@@ -26,7 +58,8 @@ enum State {
 impl<'a> MimeTypeMatcher<'a> {
     pub(crate) fn new(value: &'a [u8]) -> Self {
         Self {
-            lexer: Lexer::new(value),
+            value,
+            pos: 0,
             state: State::SearchingMainType,
             cur_result: None,
             best_result: None,
@@ -41,10 +74,10 @@ impl<'a> MimeTypeMatcher<'a> {
 
         let mut cur_main_type = None;
         let mut is_q_param = false;
-        while !self.lexer.eof() {
+        while self.pos < self.value.len() {
             match self.state {
                 State::SearchingMainType => {
-                    if let Some(LexerToken::Token(token)) = self.lexer.token() {
+                    if let Some(LexerToken::Token(token)) = token(self.value, &mut self.pos) {
                         cur_main_type = Some(token);
                         self.state = State::SeenMainType;
                     } else {
@@ -52,15 +85,15 @@ impl<'a> MimeTypeMatcher<'a> {
                     }
                 }
                 State::SeenMainType => {
-                    if let Some(LexerToken::Semicolon) = self.lexer.slash() {
+                    if let Some(LexerToken::Slash) = slash(self.value, &mut self.pos) {
                         self.state = State::SeenSlash;
                     } else {
                         return None;
                     }
                 }
                 State::SeenSlash => {
-                    if let Some(LexerToken::Token(subtype)) = self.lexer.token() {
-                        let main_type = cur_main_type.take().unwrap();
+                    if let Some(LexerToken::Token(subtype)) = token(self.value, &mut self.pos) {
+                        let main_type = cur_main_type.unwrap();
                         if let Some(match_type) = get_mime_type_match_type(
                             main_type,
                             subtype,
@@ -78,27 +111,28 @@ impl<'a> MimeTypeMatcher<'a> {
                     }
                 }
                 State::SeenSubType => {
-                    self.lexer.ows();
-                    if let Some(LexerToken::Semicolon) = self.lexer.semicolon() {
-                        self.lexer.ows();
+                    ows(self.value, &mut self.pos);
+                    if let Some(LexerToken::Semicolon) = semicolon(self.value, &mut self.pos) {
+                        ows(self.value, &mut self.pos);
                         self.state = State::SeenSemicolon;
-                    } else if let Some(LexerToken::Comma) = self.lexer.comma() {
-                        self.lexer.ows();
+                    } else if let Some(LexerToken::Comma) = comma(self.value, &mut self.pos) {
+                        ows(self.value, &mut self.pos);
+                        self.may_update_best_result();
                         self.state = State::SearchingMainType;
                     } else {
                         return None;
                     }
                 }
                 State::SeenSemicolon => {
-                    if let Some(LexerToken::Token(tok_or_val)) = self.lexer.token() {
-                        is_q_param = tok_or_val == b"q";
+                    if let Some(LexerToken::Token(param_name)) = token(self.value, &mut self.pos) {
+                        is_q_param = bytes_eq_ignore_case(param_name, b"q");
                         self.state = State::SeenParameterName;
                     } else {
                         return None;
                     }
                 }
                 State::SeenParameterName => {
-                    if Some(LexerToken::Equal) == self.lexer.equal() {
+                    if Some(LexerToken::Equal) == equal(self.value, &mut self.pos) {
                         self.state = State::SeenEqual;
                     } else {
                         return None;
@@ -106,26 +140,27 @@ impl<'a> MimeTypeMatcher<'a> {
                 }
                 State::SeenEqual => {
                     if is_q_param {
-                        if let Some(LexerToken::QValue(q)) = self.lexer.q_value() {
+                        if let Some(LexerToken::QValue(q)) = q_value(self.value, &mut self.pos) {
                             if let Some(cur_result) = self.cur_result.as_mut() {
                                 cur_result.q = q;
                             }
                         } else {
                             return None;
                         }
-                    } else if self.lexer.parameter_value().is_none() {
+                    } else if parameter_value(self.value, &mut self.pos).is_none() {
                         return None;
                     }
                     self.state = State::SeenParameterValue;
                 }
                 State::SeenParameterValue => {
-                    self.lexer.ows();
-                    if let Some(LexerToken::Comma) = self.lexer.comma() {
-                        self.lexer.ows();
+                    ows(self.value, &mut self.pos);
+                    if let Some(LexerToken::Comma) = comma(self.value, &mut self.pos) {
+                        ows(self.value, &mut self.pos);
                         self.may_update_best_result();
                         self.state = State::SearchingMainType;
-                    } else if let Some(LexerToken::Semicolon) = self.lexer.semicolon() {
-                        self.lexer.ows();
+                    } else if let Some(LexerToken::Semicolon) = semicolon(self.value, &mut self.pos)
+                    {
+                        ows(self.value, &mut self.pos);
                         self.state = State::SeenSemicolon;
                     } else {
                         return None;
@@ -164,8 +199,8 @@ fn get_mime_type_match_type(
         } else {
             None
         }
-    } else if main_type == want_main_type {
-        if subtype == want_subtype {
+    } else if bytes_eq_ignore_case(main_type, want_main_type) {
+        if bytes_eq_ignore_case(subtype, want_subtype) {
             Some(MimeTypeMatchType::Exact)
         } else if subtype == b"*" {
             Some(MimeTypeMatchType::SubTypeWildcard)
@@ -174,27 +209,6 @@ fn get_mime_type_match_type(
         }
     } else {
         None
-    }
-}
-
-fn bytes_eq_ignore_case(bytes1: &[u8], bytes2: &[u8]) -> bool {
-    if bytes1.len() != bytes2.len() {
-        return false;
-    }
-    for i in 0..bytes1.len() {
-        if !byte_eq_ignore_case(bytes1[i], bytes2[i]) {
-            return false;
-        }
-    }
-    true
-}
-
-fn byte_eq_ignore_case(b1: u8, b2: u8) -> bool {
-    // Apapted from https://docs.rs/ascii/1.1.0/src/ascii/ascii_char.rs.html#726-732
-    b1 == b2 || {
-        let b1_not_upper = b1 | 0b010_0000;
-        let b2_not_upper = b2 | 0b010_0000;
-        b1_not_upper.is_ascii_lowercase() && b1_not_upper == b2_not_upper
     }
 }
 
@@ -211,12 +225,98 @@ mod tests {
     }
 
     #[test]
-    fn test_bytes_eq_ignore_case() {
-        assert!(bytes_eq_ignore_case(b"gzip", b"gzip"));
-        assert!(bytes_eq_ignore_case(b"gzip", b"GZip"));
-        assert!(bytes_eq_ignore_case(b"bzip2", b"bziP2"));
+    fn test_match_for_mime_type() {
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::MainTypeWildcard,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            match_for_mime_type(b"*/*", b"image/webp"),
+        );
 
-        assert!(!bytes_eq_ignore_case(b"gzip", b"zip"));
-        assert!(!bytes_eq_ignore_case(b"gzip", b"gzi2"));
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::SubTypeWildcard,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            match_for_mime_type(b"image/*", b"image/webp"),
+        );
+
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::Exact,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            match_for_mime_type(b"image/webp", b"image/webp"),
+        );
+
+        let chrome_accept_html = b"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
+
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::MainTypeWildcard,
+                q: QValue::try_from(0.8).unwrap(),
+            }),
+            match_for_mime_type(chrome_accept_html, b"image/png"),
+        );
+
+        let chrome_accept_img_tag =
+            b"image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
+        let chrome_webp_match = match_for_mime_type(chrome_accept_img_tag, b"image/webp");
+        let chrome_png_match = match_for_mime_type(chrome_accept_img_tag, b"image/png");
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::Exact,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            chrome_webp_match,
+        );
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::SubTypeWildcard,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            chrome_png_match,
+        );
+        assert!(chrome_webp_match.gt(&chrome_png_match));
+
+        let safari_accept_img_tag =
+            b"image/webp,image/avif,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5";
+        let safari_webp_match = match_for_mime_type(safari_accept_img_tag, b"image/webp");
+        let safari_png_match = match_for_mime_type(safari_accept_img_tag, b"image/png");
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::Exact,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            safari_webp_match,
+        );
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::Exact,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            safari_png_match,
+        );
+        assert!(safari_webp_match.eq(&safari_png_match));
+
+        let firefox_accept_img_tag = b"image/avif,image/webp,*/*";
+        let firefox_webp_match = match_for_mime_type(firefox_accept_img_tag, b"image/webp");
+        let firefox_png_match = match_for_mime_type(firefox_accept_img_tag, b"image/png");
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::Exact,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            firefox_webp_match,
+        );
+        assert_eq!(
+            Some(MimeTypeMatch {
+                match_type: MimeTypeMatchType::MainTypeWildcard,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            firefox_png_match,
+        );
+        assert!(firefox_webp_match.gt(&firefox_png_match));
     }
 }

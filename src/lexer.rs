@@ -1,8 +1,8 @@
 use crate::q_value::{QValue, Q_VALUE_FRAC_MAX_DIGITS};
 
 pub(crate) struct Lexer<'a> {
-    input: &'a [u8],
-    pos: usize,
+    pub(crate) input: &'a [u8],
+    pub(crate) pos: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -27,10 +27,6 @@ impl<'a> Lexer<'a> {
 
     pub(crate) fn ows(&mut self) {
         ows(self.input, &mut self.pos)
-    }
-
-    pub(crate) fn slash(&mut self) -> Option<LexerToken> {
-        slash(self.input, &mut self.pos)
     }
 
     pub(crate) fn comma(&mut self) -> Option<LexerToken> {
@@ -62,7 +58,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-fn ows(input: &[u8], pos: &mut usize) {
+pub(crate) fn ows(input: &[u8], pos: &mut usize) {
     while *pos < input.len() {
         match input[*pos] {
             b' ' | b'\t' => *pos += 1,
@@ -71,7 +67,7 @@ fn ows(input: &[u8], pos: &mut usize) {
     }
 }
 
-fn slash<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+pub(crate) fn slash<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     if *pos < input.len() && input[*pos] == b'/' {
         *pos += 1;
         Some(LexerToken::Slash)
@@ -80,7 +76,7 @@ fn slash<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     }
 }
 
-fn comma<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+pub(crate) fn comma<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     if *pos < input.len() && input[*pos] == b',' {
         *pos += 1;
         Some(LexerToken::Comma)
@@ -89,7 +85,7 @@ fn comma<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     }
 }
 
-fn semicolon<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+pub(crate) fn semicolon<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     if *pos < input.len() && input[*pos] == b';' {
         *pos += 1;
         Some(LexerToken::Semicolon)
@@ -98,7 +94,7 @@ fn semicolon<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     }
 }
 
-fn equal<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+pub(crate) fn equal<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     if *pos < input.len() && input[*pos] == b'=' {
         *pos += 1;
         Some(LexerToken::Equal)
@@ -134,7 +130,7 @@ fn is_tchar(c: u8) -> bool {
     TCHAR_TABLE[c as usize]
 }
 
-fn token<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+pub(crate) fn token<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     let mut i = *pos;
     while i < input.len() && is_tchar(input[i]) {
         i += 1
@@ -148,7 +144,15 @@ fn token<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     }
 }
 
-fn double_quoted_string<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+pub(crate) fn parameter_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+    if let Some(v) = token(input, pos) {
+        Some(v)
+    } else {
+        double_quoted_string(input, pos)
+    }
+}
+
+pub(crate) fn double_quoted_string<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     let i = *pos;
     if i < input.len() && input[i] == b'"' {
         let mut escaped = false;
@@ -172,7 +176,7 @@ fn double_quoted_string<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerTok
     None
 }
 
-fn q_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
+pub(crate) fn q_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
     let mut i = *pos;
     if i < input.len() {
         let mut millis: u16 = match input[i] {
