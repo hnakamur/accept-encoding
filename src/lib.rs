@@ -1,14 +1,15 @@
 use std::cmp::Ordering;
 
-use finder::QValueFinder;
+use encoding_matcher::EncodingMatcher;
 use q_value::QValue;
 
 pub mod c;
-mod finder;
+mod encoding_matcher;
+mod lexer;
 mod q_value;
 
-pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<MatchResult> {
-    QValueFinder::new(header_value).find(encoding)
+pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<EncodingMatch> {
+    EncodingMatcher::new(header_value).match_encoding(encoding)
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
@@ -18,18 +19,18 @@ pub enum MatchType {
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub struct MatchResult {
+pub struct EncodingMatch {
     pub match_type: MatchType,
     pub q: QValue,
 }
 
-impl Ord for MatchResult {
+impl Ord for EncodingMatch {
     fn cmp(&self, other: &Self) -> Ordering {
         (self.match_type, &self.q).cmp(&(other.match_type, &other.q))
     }
 }
 
-impl PartialOrd for MatchResult {
+impl PartialOrd for EncodingMatch {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
@@ -42,7 +43,7 @@ mod tests {
     #[test]
     fn test_match_for_encoding() {
         assert_eq!(
-            Some(MatchResult {
+            Some(EncodingMatch {
                 match_type: MatchType::Wildcard,
                 q: QValue::try_from(1.0).unwrap(),
             }),
@@ -50,7 +51,7 @@ mod tests {
         );
 
         assert_eq!(
-            Some(MatchResult {
+            Some(EncodingMatch {
                 match_type: MatchType::Wildcard,
                 q: QValue::try_from(0.5).unwrap(),
             }),
@@ -58,7 +59,7 @@ mod tests {
         );
 
         assert_eq!(
-            Some(MatchResult {
+            Some(EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(1.0).unwrap(),
             }),
@@ -66,7 +67,7 @@ mod tests {
         );
 
         assert_eq!(
-            Some(MatchResult {
+            Some(EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(1.0).unwrap(),
             }),
@@ -74,7 +75,7 @@ mod tests {
         );
 
         assert_eq!(
-            Some(MatchResult {
+            Some(EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(0.8).unwrap(),
             }),
@@ -82,7 +83,7 @@ mod tests {
         );
 
         assert_eq!(
-            Some(MatchResult {
+            Some(EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(0.8).unwrap(),
             }),
@@ -95,7 +96,7 @@ mod tests {
             let header_value = b"br  ; q=0.9 , gzip;q=0.8";
             let gzip_res = match_for_encoding(header_value, b"gzip");
             assert_eq!(
-                Some(MatchResult {
+                Some(EncodingMatch {
                     match_type: MatchType::Exact,
                     q: QValue::try_from(0.8).unwrap(),
                 }),
@@ -104,7 +105,7 @@ mod tests {
 
             let br_res = match_for_encoding(header_value, b"br");
             assert_eq!(
-                Some(MatchResult {
+                Some(EncodingMatch {
                     match_type: MatchType::Exact,
                     q: QValue::try_from(0.9).unwrap(),
                 }),
@@ -118,7 +119,7 @@ mod tests {
             let header_value = b"br , *";
             let gzip_res = match_for_encoding(header_value, b"gzip");
             assert_eq!(
-                Some(MatchResult {
+                Some(EncodingMatch {
                     match_type: MatchType::Wildcard,
                     q: QValue::try_from(1.0).unwrap(),
                 }),
@@ -127,7 +128,7 @@ mod tests {
 
             let br_res = match_for_encoding(header_value, b"br");
             assert_eq!(
-                Some(MatchResult {
+                Some(EncodingMatch {
                     match_type: MatchType::Exact,
                     q: QValue::try_from(1.0).unwrap(),
                 }),
@@ -141,7 +142,7 @@ mod tests {
             let header_value = b"br; q=0.9 , *";
             let gzip_res = match_for_encoding(header_value, b"gzip");
             assert_eq!(
-                Some(MatchResult {
+                Some(EncodingMatch {
                     match_type: MatchType::Wildcard,
                     q: QValue::try_from(1.0).unwrap(),
                 }),
@@ -150,7 +151,7 @@ mod tests {
 
             let br_res = match_for_encoding(header_value, b"br");
             assert_eq!(
-                Some(MatchResult {
+                Some(EncodingMatch {
                     match_type: MatchType::Exact,
                     q: QValue::try_from(0.9).unwrap(),
                 }),
@@ -165,11 +166,11 @@ mod tests {
     fn test_match_result_cmp() {
         assert_eq!(
             Ordering::Greater,
-            MatchResult {
+            EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(1.0).unwrap(),
             }
-            .cmp(&MatchResult {
+            .cmp(&EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(0.9).unwrap(),
             })
@@ -177,11 +178,11 @@ mod tests {
 
         assert_eq!(
             Ordering::Greater,
-            MatchResult {
+            EncodingMatch {
                 match_type: MatchType::Wildcard,
                 q: QValue::try_from(1.0).unwrap(),
             }
-            .cmp(&MatchResult {
+            .cmp(&EncodingMatch {
                 match_type: MatchType::Wildcard,
                 q: QValue::try_from(0.9).unwrap(),
             })
@@ -189,11 +190,11 @@ mod tests {
 
         assert_eq!(
             Ordering::Equal,
-            MatchResult {
+            EncodingMatch {
                 match_type: MatchType::Wildcard,
                 q: QValue::try_from(0.9).unwrap(),
             }
-            .cmp(&MatchResult {
+            .cmp(&EncodingMatch {
                 match_type: MatchType::Wildcard,
                 q: QValue::try_from(0.9).unwrap(),
             })
@@ -201,11 +202,11 @@ mod tests {
 
         assert_eq!(
             Ordering::Equal,
-            MatchResult {
+            EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(1.0).unwrap(),
             }
-            .cmp(&MatchResult {
+            .cmp(&EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(1.0).unwrap(),
             })
@@ -213,11 +214,11 @@ mod tests {
 
         assert_eq!(
             Ordering::Greater,
-            MatchResult {
+            EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(1.0).unwrap(),
             }
-            .cmp(&MatchResult {
+            .cmp(&EncodingMatch {
                 match_type: MatchType::Wildcard,
                 q: QValue::try_from(1.0).unwrap(),
             })
@@ -225,11 +226,11 @@ mod tests {
 
         assert_eq!(
             Ordering::Less,
-            MatchResult {
+            EncodingMatch {
                 match_type: MatchType::Wildcard,
                 q: QValue::try_from(1.0).unwrap(),
             }
-            .cmp(&MatchResult {
+            .cmp(&EncodingMatch {
                 match_type: MatchType::Exact,
                 q: QValue::try_from(0.9).unwrap(),
             })

@@ -5,13 +5,13 @@ ffi.cdef[[
     typedef struct {
         int32_t match_type;
         double q;
-    } EncodingMatchResult;
+    } AeEncodingMatch;
 
-    EncodingMatchResult ae_match(
+    AeEncodingMatch ae_match(
         const char *header_value, size_t header_value_len,
         const char *encoding, size_t encoding_len);
     
-    int ae_is_better_match_than(EncodingMatchResult res1, EncodingMatchResult res2);
+    int ae_is_better_match_than(AeEncodingMatch res1, AeEncodingMatch res2);
 ]]
 
 local function ae_match(header_value, encoding)
