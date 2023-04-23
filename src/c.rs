@@ -4,9 +4,8 @@ use std::{
 };
 
 use crate::{
-    match_for_encoding,
+    encoding_matcher::{match_for_encoding, EncodingMatchType},
     mime_type_matcher::{match_for_mime_type, MimeTypeMatchType},
-    EncodingMatchType,
 };
 
 pub const C_ENCODING_MATCH_TYPE_NO_MATCH: i32 = 0;
