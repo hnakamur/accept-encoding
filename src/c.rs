@@ -44,13 +44,19 @@ pub extern "C" fn c_match_encoding(
 }
 
 #[no_mangle]
-pub extern "C" fn c_is_better_encoding_match(res1: CEncodingMatch, res2: CEncodingMatch) -> c_int {
-    if res1.match_type > res2.match_type
-        || (res1.match_type == res2.match_type
-            && res1.match_type != C_ENCODING_MATCH_TYPE_NO_MATCH
-            && res1.q > res2.q)
-    {
+pub extern "C" fn c_cmp_encoding_match(m1: CEncodingMatch, m2: CEncodingMatch) -> c_int {
+    if m1.match_type < m2.match_type {
+        -1
+    } else if m1.match_type > m2.match_type {
         1
+    } else if m1.match_type != C_ENCODING_MATCH_TYPE_NO_MATCH {
+        if m1.q < m2.q {
+            -1
+        } else if m1.q > m2.q {
+            1
+        } else {
+            0
+        }
     } else {
         0
     }
@@ -94,13 +100,19 @@ pub extern "C" fn c_match_mime_type(
 }
 
 #[no_mangle]
-pub extern "C" fn c_is_better_mime_type_match(res1: CMimeTypeMatch, res2: CMimeTypeMatch) -> c_int {
-    if res1.match_type > res2.match_type
-        || (res1.match_type == res2.match_type
-            && res1.match_type != C_MIME_TYPE_MATCH_TYPE_NO_MATCH
-            && res1.q > res2.q)
-    {
+pub extern "C" fn c_cmp_mime_type_match(m1: CMimeTypeMatch, m2: CMimeTypeMatch) -> c_int {
+    if m1.match_type < m2.match_type {
+        -1
+    } else if m1.match_type > m2.match_type {
         1
+    } else if m1.match_type != C_MIME_TYPE_MATCH_TYPE_NO_MATCH {
+        if m1.q < m2.q {
+            -1
+        } else if m1.q > m2.q {
+            1
+        } else {
+            0
+        }
     } else {
         0
     }
