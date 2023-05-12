@@ -1,7 +1,7 @@
 use accept_encoding::match_for_encoding;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-fn bench_fibs(c: &mut Criterion) {
+fn bench_match_for_encoding(c: &mut Criterion) {
     let mut group = c.benchmark_group("match_for_encoding");
     let input_values: Vec<&[u8]> = vec![b"gzip, deflate, br", b"gzip, deflate"];
     let encoding = b"br";
@@ -12,5 +12,5 @@ fn bench_fibs(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_fibs);
+criterion_group!(benches, bench_match_for_encoding);
 criterion_main!(benches);
