@@ -90,7 +90,7 @@ where
     }
 }
 
-fn match_zero_or_more<F>(pred: F) -> impl Fn(&[u8], Cursor) -> ParseResult
+fn match_zero_or_more<F>(pred: F) -> impl Fn(&[u8], Cursor) -> Cursor
 where
     F: Fn(u8) -> bool,
 {
@@ -103,7 +103,7 @@ where
                 break;
             }
         }
-        Ok(c)
+        c
     }
 }
 
@@ -262,7 +262,7 @@ const QUOTED_PAIR_CHAR_TABLE: [bool; 256] = [
     true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,
 ];
 
-pub(crate) fn ows(input: &[u8], c: Cursor) -> ParseResult {
+pub(crate) fn ows(input: &[u8], c: Cursor) -> Cursor {
     match_zero_or_more(|b| matches!(b, b' ' | b'\t'))(input, c)
 }
 

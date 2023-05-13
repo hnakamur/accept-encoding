@@ -95,13 +95,13 @@ impl<'a> EncodingMatcher<'a> {
                     }
                 }
                 State::SeenEncoding => {
-                    c = lexer2::ows(self.input, c).ok()?;
+                    c = lexer2::ows(self.input, c);
                     if let Ok(c2) = lexer2::byte(b';')(self.input, c) {
-                        c = lexer2::ows(self.input, c2).ok()?;
+                        c = lexer2::ows(self.input, c2);
                         self.state = State::SeenSemicolon;
                     } else {
                         c = lexer2::byte(b',')(self.input, c).ok()?;
-                        c = lexer2::ows(self.input, c).ok()?;
+                        c = lexer2::ows(self.input, c);
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
                     }
@@ -133,14 +133,14 @@ impl<'a> EncodingMatcher<'a> {
                     self.state = State::SeenParameterValue;
                 }
                 State::SeenParameterValue => {
-                    c = lexer2::ows(self.input, c).ok()?;
+                    c = lexer2::ows(self.input, c);
                     if let Ok(c2) = lexer2::byte(b',')(self.input, c) {
-                        c = lexer2::ows(self.input, c2).ok()?;
+                        c = lexer2::ows(self.input, c2);
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
                     } else {
                         c = lexer2::byte(b';')(self.input, c).ok()?;
-                        c = lexer2::ows(self.input, c).ok()?;
+                        c = lexer2::ows(self.input, c);
                         self.state = State::SeenSemicolon;
                     }
                 }
