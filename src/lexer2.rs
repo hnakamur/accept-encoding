@@ -23,7 +23,7 @@ impl Cursor {
         Self(self.0 + n)
     }
 
-    pub fn slice<'a, 'b>(&'a self, input: &'b [u8], end: Cursor) -> &'b [u8] {
+    pub fn slice<'a>(&self, input: &'a [u8], end: Cursor) -> &'a [u8] {
         &input[self.0..end.0]
     }
 }
@@ -32,20 +32,6 @@ pub(crate) fn byte(b: u8) -> impl Fn(&[u8], Cursor) -> ParseResult {
     move |input: &[u8], c: Cursor| {
         if let Some(b2) = c.peek(input) {
             if b2 == b {
-                return Ok(c.advanced(1));
-            }
-        }
-        Err(ParseError(c))
-    }
-}
-
-fn match_one<F>(pred: F) -> impl Fn(&[u8], Cursor) -> ParseResult
-where
-    F: Fn(u8) -> bool,
-{
-    move |input: &[u8], c: Cursor| {
-        if let Some(b) = c.peek(input) {
-            if pred(b) {
                 return Ok(c.advanced(1));
             }
         }
@@ -84,7 +70,7 @@ where
     F: Fn(u8) -> bool,
 {
     move |input: &[u8], c: Cursor| {
-        let mut c2 = c.clone();
+        let mut c2 = c;
         while let Some(b) = c2.peek(input) {
             if pred(b) {
                 c2 = c2.advanced(1);
@@ -111,20 +97,6 @@ where
                 c = c.advanced(1);
             } else {
                 break;
-            }
-        }
-        Ok(c)
-    }
-}
-
-fn peek_one_not<F>(pred: F) -> impl Fn(&[u8], Cursor) -> ParseResult
-where
-    F: Fn(u8) -> bool,
-{
-    move |input: &[u8], c: Cursor| {
-        if let Some(b) = c.peek(input) {
-            if pred(b) {
-                return Err(ParseError(c));
             }
         }
         Ok(c)
@@ -288,18 +260,17 @@ fn ows(input: &[u8], c: Cursor) -> ParseResult {
 }
 
 fn is_digit(b: u8) -> bool {
-    b >= b'0' && b <= b'9'
+    b.is_ascii_digit()
 }
 
-pub(crate) fn q_value<'a>(input: &[u8], c: Cursor) -> ParseResult {
-    let c = alt(
+pub(crate) fn q_value(input: &[u8], c: Cursor) -> ParseResult {
+    alt(
         pair(byte(b'0'), opt(pair(byte(b'.'), match_m_n(is_digit, 0, 3)))),
         pair(
             byte(b'1'),
             opt(pair(byte(b'.'), match_m_n(|b| b == b'0', 0, 3))),
         ),
-    )(input, c)?;
-    peek_one_not(is_digit)(input, c)
+    )(input, c)
 }
 
 pub(crate) fn consume_ows_till_eof(input: &[u8], c: Cursor) -> ParseResult {
@@ -492,7 +463,7 @@ mod tests {
         }
         {
             let input = b"0.1239";
-            assert_eq!(Err(ParseError(Cursor(5))), q_value(input, Cursor(0)));
+            assert_eq!(Ok(Cursor(5)), q_value(input, Cursor(0)));
         }
         {
             let input = b"1";
@@ -516,11 +487,11 @@ mod tests {
         }
         {
             let input = b"1.0000";
-            assert_eq!(Err(ParseError(Cursor(5))), q_value(input, Cursor(0)));
+            assert_eq!(Ok(Cursor(5)), q_value(input, Cursor(0)));
         }
         {
             let input = b"1.1";
-            assert_eq!(Err(ParseError(Cursor(2))), q_value(input, Cursor(0)));
+            assert_eq!(Ok(Cursor(2)), q_value(input, Cursor(0)));
         }
     }
 }
