@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, str};
 
 use crate::{
     byte_slice::bytes_eq_ignore_case,
@@ -122,7 +122,9 @@ impl<'a> EncodingMatcher<'a> {
                         let c1 = c;
                         c = lexer2::q_value(self.input, c).ok()?;
                         if let Some(cur_result) = self.cur_result.as_mut() {
-                            cur_result.q = QValue::try_from(c1.slice(self.input, c)).unwrap();
+                            cur_result.q =
+                                QValue::try_from(str::from_utf8(c1.slice(self.input, c)).unwrap())
+                                    .unwrap();
                         }
                     } else {
                         c = lexer2::alt(lexer2::token, lexer2::quoted_string)(self.input, c)

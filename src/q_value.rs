@@ -18,11 +18,12 @@ impl QValue {
     }
 }
 
-impl TryFrom<&[u8]> for QValue {
+impl TryFrom<&str> for QValue {
     type Error = InvaliQValueError;
 
-    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
         const MAX_LEN: usize = 2 + Q_VALUE_FRAC_MAX_DIGITS as usize;
+        let v = s.as_bytes();
         if !v.is_empty() {
             match v[0] {
                 b'0' => {
@@ -90,21 +91,21 @@ mod test {
 
     #[test]
     fn test_qvalue_from_byte_slice() {
-        assert_eq!(Ok(QValue { millis: 0 }), QValue::try_from(&b"0"[..]));
-        assert_eq!(Ok(QValue { millis: 0 }), QValue::try_from(&b"0."[..]));
-        assert_eq!(Ok(QValue { millis: 100 }), QValue::try_from(&b"0.1"[..]));
-        assert_eq!(Ok(QValue { millis: 120 }), QValue::try_from(&b"0.12"[..]));
-        assert_eq!(Ok(QValue { millis: 123 }), QValue::try_from(&b"0.123"[..]));
-        assert_eq!(Err(InvaliQValueError), QValue::try_from(&b"0.1235"[..]));
+        assert_eq!(Ok(QValue { millis: 0 }), QValue::try_from("0"));
+        assert_eq!(Ok(QValue { millis: 0 }), QValue::try_from("0."));
+        assert_eq!(Ok(QValue { millis: 100 }), QValue::try_from("0.1"));
+        assert_eq!(Ok(QValue { millis: 120 }), QValue::try_from("0.12"));
+        assert_eq!(Ok(QValue { millis: 123 }), QValue::try_from("0.123"));
+        assert_eq!(Err(InvaliQValueError), QValue::try_from("0.1235"));
 
-        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from(&b"1"[..]));
-        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from(&b"1."[..]));
-        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from(&b"1.0"[..]));
-        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from(&b"1.00"[..]));
-        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from(&b"1.000"[..]));
-        assert_eq!(Err(InvaliQValueError), QValue::try_from(&b"1.0000"[..]));
-        assert_eq!(Err(InvaliQValueError), QValue::try_from(&b"1.1"[..]));
+        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from("1"));
+        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from("1."));
+        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from("1.0"));
+        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from("1.00"));
+        assert_eq!(Ok(QValue { millis: 1000 }), QValue::try_from("1.000"));
+        assert_eq!(Err(InvaliQValueError), QValue::try_from("1.0000"));
+        assert_eq!(Err(InvaliQValueError), QValue::try_from("1.1"));
 
-        assert_eq!(Err(InvaliQValueError), QValue::try_from(&b"-0"[..]));
+        assert_eq!(Err(InvaliQValueError), QValue::try_from("-0"));
     }
 }
