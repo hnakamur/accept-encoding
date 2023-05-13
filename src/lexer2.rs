@@ -171,6 +171,7 @@ pub(crate) fn token(input: &[u8], c: Cursor) -> ParseResult {
     match_one_or_more(is_tchar)(input, c)
 }
 
+#[inline]
 fn is_tchar(c: u8) -> bool {
     TCHAR_TABLE[c as usize]
 }
@@ -203,6 +204,7 @@ pub(crate) fn quoted_string(input: &[u8], c: Cursor) -> ParseResult {
     byte(b'"')(input, c)
 }
 
+#[inline]
 fn is_qdtext(c: u8) -> bool {
     QDTEXT_TABLE[c as usize]
 }
@@ -231,6 +233,7 @@ const QDTEXT_TABLE: [bool; 256] = [
     true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,
 ];
 
+#[inline]
 fn is_quoted_pair_char(c: u8) -> bool {
     QUOTED_PAIR_CHAR_TABLE[c as usize]
 }
@@ -260,9 +263,10 @@ const QUOTED_PAIR_CHAR_TABLE: [bool; 256] = [
 ];
 
 pub(crate) fn ows(input: &[u8], c: Cursor) -> ParseResult {
-    match_zero_or_more(|b| b == b' ' || b == b'\t')(input, c)
+    match_zero_or_more(|b| matches!(b, b' ' | b'\t'))(input, c)
 }
 
+#[inline]
 fn is_digit(b: u8) -> bool {
     b.is_ascii_digit()
 }
