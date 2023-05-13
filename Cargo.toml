@@ -16,3 +16,9 @@ criterion = { version = "0.4", features = ["html_reports"] }
 [[bench]]
 name = "encoding"
 harness = false
+
+[profile.bench]
+debug = true
+
+[profile.release]
+debug = true

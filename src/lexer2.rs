@@ -7,10 +7,12 @@ pub(crate) type ParseResult = Result<Cursor, ParseError>;
 pub(crate) struct Cursor(pub usize);
 
 impl Cursor {
+    #[inline]
     pub fn eof(&self, input: &[u8]) -> bool {
         self.0 >= input.len()
     }
 
+    #[inline]
     pub fn peek(&self, input: &[u8]) -> Option<u8> {
         if self.0 < input.len() {
             Some(input[self.0])
@@ -19,10 +21,12 @@ impl Cursor {
         }
     }
 
+    #[inline]
     pub fn advanced(&self, n: usize) -> Self {
         Self(self.0 + n)
     }
 
+    #[inline]
     pub fn slice<'a>(&self, input: &'a [u8], end: Cursor) -> &'a [u8] {
         &input[self.0..end.0]
     }
@@ -255,7 +259,7 @@ const QUOTED_PAIR_CHAR_TABLE: [bool; 256] = [
     true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,
 ];
 
-fn ows(input: &[u8], c: Cursor) -> ParseResult {
+pub(crate) fn ows(input: &[u8], c: Cursor) -> ParseResult {
     match_zero_or_more(|b| b == b' ' || b == b'\t')(input, c)
 }
 
@@ -271,23 +275,6 @@ pub(crate) fn q_value(input: &[u8], c: Cursor) -> ParseResult {
             opt(pair(byte(b'.'), match_m_n(|b| b == b'0', 0, 3))),
         ),
     )(input, c)
-}
-
-pub(crate) fn consume_ows_till_eof(input: &[u8], c: Cursor) -> ParseResult {
-    let c2 = ows(input, c)?;
-    Ok(if c2.eof(input) { c2 } else { c })
-}
-
-pub(crate) fn ows_comma_ows(input: &[u8], c: Cursor) -> ParseResult {
-    let c = ows(input, c)?;
-    let c = byte(b',')(input, c)?;
-    ows(input, c)
-}
-
-pub(crate) fn ows_semicolon_ows(input: &[u8], c: Cursor) -> ParseResult {
-    let c = ows(input, c)?;
-    let c = byte(b';')(input, c)?;
-    ows(input, c)
 }
 
 #[cfg(test)]

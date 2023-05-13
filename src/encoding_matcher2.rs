@@ -95,15 +95,15 @@ impl<'a> EncodingMatcher<'a> {
                     }
                 }
                 State::SeenEncoding => {
-                    if let Ok(c2) = lexer2::ows_semicolon_ows(self.input, c) {
-                        c = c2;
+                    c = lexer2::ows(self.input, c).ok()?;
+                    if let Ok(c2) = lexer2::byte(b';')(self.input, c) {
+                        c = lexer2::ows(self.input, c2).ok()?;
                         self.state = State::SeenSemicolon;
-                    } else if let Ok(c2) = lexer2::ows_comma_ows(self.input, c) {
-                        c = c2;
+                    } else {
+                        c = lexer2::byte(b',')(self.input, c).ok()?;
+                        c = lexer2::ows(self.input, c).ok()?;
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
-                    } else if lexer2::consume_ows_till_eof(self.input, c).is_ok() {
-                        break;
                     }
                 }
                 State::SeenSemicolon => {
@@ -133,15 +133,15 @@ impl<'a> EncodingMatcher<'a> {
                     self.state = State::SeenParameterValue;
                 }
                 State::SeenParameterValue => {
-                    if let Ok(c2) = lexer2::ows_comma_ows(self.input, c) {
-                        c = c2;
+                    c = lexer2::ows(self.input, c).ok()?;
+                    if let Ok(c2) = lexer2::byte(b',')(self.input, c) {
+                        c = lexer2::ows(self.input, c2).ok()?;
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
-                    } else if let Ok(c2) = lexer2::ows_semicolon_ows(self.input, c) {
-                        c = c2;
+                    } else {
+                        c = lexer2::byte(b';')(self.input, c).ok()?;
+                        c = lexer2::ows(self.input, c).ok()?;
                         self.state = State::SeenSemicolon;
-                    } else if lexer2::consume_ows_till_eof(self.input, c).is_ok() {
-                        break;
                     }
                 }
             }
@@ -160,6 +160,17 @@ impl<'a> EncodingMatcher<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_match_for_encoding_gzip_deflate_br_to_br() {
+        assert_eq!(
+            Some(EncodingMatch {
+                match_type: EncodingMatchType::Exact,
+                q: QValue::try_from(1.0).unwrap(),
+            }),
+            match_for_encoding(b"gzip, deflate, br", b"br")
+        );
+    }
 
     #[test]
     fn test_match_for_encoding() {
