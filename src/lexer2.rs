@@ -32,6 +32,33 @@ impl Cursor {
     }
 }
 
+pub(crate) fn semicolon(input: &[u8], c: Cursor) -> ParseResult {
+    if let Some(b2) = c.peek(input) {
+        if b2 == b';' {
+            return Ok(c.advanced(1));
+        }
+    }
+    Err(ParseError(c))
+}
+
+pub(crate) fn comma(input: &[u8], c: Cursor) -> ParseResult {
+    if let Some(b2) = c.peek(input) {
+        if b2 == b',' {
+            return Ok(c.advanced(1));
+        }
+    }
+    Err(ParseError(c))
+}
+
+pub(crate) fn equal(input: &[u8], c: Cursor) -> ParseResult {
+    if let Some(b2) = c.peek(input) {
+        if b2 == b'=' {
+            return Ok(c.advanced(1));
+        }
+    }
+    Err(ParseError(c))
+}
+
 pub(crate) fn byte(b: u8) -> impl Fn(&[u8], Cursor) -> ParseResult {
     move |input: &[u8], c: Cursor| {
         if let Some(b2) = c.peek(input) {
@@ -168,7 +195,17 @@ where
 }
 
 pub(crate) fn token(input: &[u8], c: Cursor) -> ParseResult {
-    match_one_or_more(is_tchar)(input, c)
+    let mut i = c.0;
+    while i < input.len() && is_tchar(input[i]) {
+        i += 1;
+    }
+    if i > c.0 {
+        Ok(Cursor(i))
+    } else {
+        Err(ParseError(Cursor(i)))
+    }
+
+    // match_one_or_more(is_tchar)(input, c)
 }
 
 #[inline]
