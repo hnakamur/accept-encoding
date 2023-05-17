@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use crate::{
     byte_slice::bytes_eq_ignore_case,
-    lexer::{Lexer, LexerToken},
+    lexer::{self, LexerToken},
     q_value::QValue,
 };
 
@@ -35,7 +35,7 @@ impl PartialOrd for EncodingMatch {
 }
 
 pub(crate) struct EncodingMatcher<'a> {
-    lexer: Lexer<'a>,
+    input: &'a [u8],
     state: State,
     cur_result: Option<EncodingMatch>,
     best_result: Option<EncodingMatch>,
@@ -52,9 +52,9 @@ enum State {
 }
 
 impl<'a> EncodingMatcher<'a> {
-    pub(crate) fn new(value: &'a [u8]) -> Self {
+    pub(crate) fn new(input: &'a [u8]) -> Self {
         Self {
-            lexer: Lexer::new(value),
+            input,
             state: State::SearchingEncoding,
             cur_result: None,
             best_result: None,
@@ -65,11 +65,13 @@ impl<'a> EncodingMatcher<'a> {
         let is_gzip = bytes_eq_ignore_case(encoding, b"gzip");
         let is_compress = bytes_eq_ignore_case(encoding, b"compress");
 
+        let mut pos: usize = 0;
         let mut is_q_param = false;
-        while !self.lexer.eof() {
+        while pos < self.input.len() {
             match self.state {
                 State::SearchingEncoding => {
-                    if let Some(LexerToken::Token(tok_or_val)) = self.lexer.token() {
+                    if let Some(LexerToken::Token(tok_or_val)) = lexer::token(self.input, &mut pos)
+                    {
                         self.cur_result = if bytes_eq_ignore_case(tok_or_val, encoding)
                             || (is_gzip && bytes_eq_ignore_case(tok_or_val, b"x-gzip"))
                             || (is_compress && bytes_eq_ignore_case(tok_or_val, b"x-compress"))
@@ -92,12 +94,12 @@ impl<'a> EncodingMatcher<'a> {
                     }
                 }
                 State::SeenEncoding => {
-                    self.lexer.ows();
-                    if let Some(LexerToken::Semicolon) = self.lexer.semicolon() {
-                        self.lexer.ows();
+                    lexer::ows(self.input, &mut pos);
+                    if let Some(LexerToken::Semicolon) = lexer::semicolon(self.input, &mut pos) {
+                        lexer::ows(self.input, &mut pos);
                         self.state = State::SeenSemicolon;
-                    } else if let Some(LexerToken::Comma) = self.lexer.comma() {
-                        self.lexer.ows();
+                    } else if let Some(LexerToken::Comma) = lexer::comma(self.input, &mut pos) {
+                        lexer::ows(self.input, &mut pos);
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
                     } else {
@@ -105,7 +107,8 @@ impl<'a> EncodingMatcher<'a> {
                     }
                 }
                 State::SeenSemicolon => {
-                    if let Some(LexerToken::Token(param_name)) = self.lexer.token() {
+                    if let Some(LexerToken::Token(param_name)) = lexer::token(self.input, &mut pos)
+                    {
                         is_q_param = bytes_eq_ignore_case(param_name, b"q");
                         self.state = State::SeenParameterName;
                     } else {
@@ -113,7 +116,7 @@ impl<'a> EncodingMatcher<'a> {
                     }
                 }
                 State::SeenParameterName => {
-                    if Some(LexerToken::Equal) == self.lexer.equal() {
+                    if Some(LexerToken::Equal) == lexer::equal(self.input, &mut pos) {
                         self.state = State::SeenEqual;
                     } else {
                         return None;
@@ -121,26 +124,28 @@ impl<'a> EncodingMatcher<'a> {
                 }
                 State::SeenEqual => {
                     if is_q_param {
-                        if let Some(LexerToken::QValue(q)) = self.lexer.q_value() {
+                        if let Some(LexerToken::QValue(q)) = lexer::q_value(self.input, &mut pos) {
                             if let Some(cur_result) = self.cur_result.as_mut() {
                                 cur_result.q = q;
                             }
                         } else {
                             return None;
                         }
-                    } else if self.lexer.parameter_value().is_none() {
+                    } else if lexer::parameter_value(self.input, &mut pos).is_none() {
                         return None;
                     }
                     self.state = State::SeenParameterValue;
                 }
                 State::SeenParameterValue => {
-                    self.lexer.ows();
-                    if let Some(LexerToken::Comma) = self.lexer.comma() {
-                        self.lexer.ows();
+                    lexer::ows(self.input, &mut pos);
+                    if let Some(LexerToken::Comma) = lexer::comma(self.input, &mut pos) {
+                        lexer::ows(self.input, &mut pos);
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
-                    } else if let Some(LexerToken::Semicolon) = self.lexer.semicolon() {
-                        self.lexer.ows();
+                    } else if let Some(LexerToken::Semicolon) =
+                        lexer::semicolon(self.input, &mut pos)
+                    {
+                        lexer::ows(self.input, &mut pos);
                         self.state = State::SeenSemicolon;
                     } else {
                         return None;

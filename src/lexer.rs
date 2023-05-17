@@ -1,10 +1,5 @@
 use crate::q_value::{QValue, Q_VALUE_FRAC_MAX_DIGITS};
 
-pub(crate) struct Lexer<'a> {
-    pub(crate) input: &'a [u8],
-    pub(crate) pos: usize,
-}
-
 #[derive(Debug, PartialEq)]
 pub(crate) enum LexerToken<'a> {
     Token(&'a [u8]),
@@ -14,48 +9,6 @@ pub(crate) enum LexerToken<'a> {
     Equal,
     QValue(QValue),
     Slash,
-}
-
-impl<'a> Lexer<'a> {
-    pub(crate) fn new(input: &'a [u8]) -> Self {
-        Self { input, pos: 0 }
-    }
-
-    pub(crate) fn eof(&self) -> bool {
-        self.pos >= self.input.len()
-    }
-
-    pub(crate) fn ows(&mut self) {
-        ows(self.input, &mut self.pos)
-    }
-
-    pub(crate) fn comma(&mut self) -> Option<LexerToken> {
-        comma(self.input, &mut self.pos)
-    }
-
-    pub(crate) fn semicolon(&mut self) -> Option<LexerToken> {
-        semicolon(self.input, &mut self.pos)
-    }
-
-    pub(crate) fn equal(&mut self) -> Option<LexerToken> {
-        equal(self.input, &mut self.pos)
-    }
-
-    pub(crate) fn token(&mut self) -> Option<LexerToken> {
-        token(self.input, &mut self.pos)
-    }
-
-    pub(crate) fn q_value(&mut self) -> Option<LexerToken> {
-        q_value(self.input, &mut self.pos)
-    }
-
-    pub(crate) fn parameter_value(&mut self) -> Option<LexerToken> {
-        if let Some(v) = token(self.input, &mut self.pos) {
-            Some(v)
-        } else {
-            double_quoted_string(self.input, &mut self.pos)
-        }
-    }
 }
 
 pub(crate) fn ows(input: &[u8], pos: &mut usize) {
