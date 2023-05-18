@@ -20,28 +20,25 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
         match state {
             State::SearchingEncoding => {
                 let c1 = c;
-                if lexer::token(input, &mut c).is_ok() {
-                    let token = c1.slice(input, c);
-                    cur_result = if bytes_eq_ignore_case(token, encoding)
-                        || (is_gzip && bytes_eq_ignore_case(token, b"x-gzip"))
-                        || (is_compress && bytes_eq_ignore_case(token, b"x-compress"))
-                    {
-                        Some(EncodingMatch {
-                            match_type: EncodingMatchType::Exact,
-                            q: QValue::from_millis(1000).unwrap(),
-                        })
-                    } else if token == b"*" {
-                        Some(EncodingMatch {
-                            match_type: EncodingMatchType::Wildcard,
-                            q: QValue::from_millis(1000).unwrap(),
-                        })
-                    } else {
-                        None
-                    };
-                    state = State::SeenEncoding;
+                lexer::token(input, &mut c).ok()?;
+                let token = c1.slice(input, c);
+                cur_result = if bytes_eq_ignore_case(token, encoding)
+                    || (is_gzip && bytes_eq_ignore_case(token, b"x-gzip"))
+                    || (is_compress && bytes_eq_ignore_case(token, b"x-compress"))
+                {
+                    Some(EncodingMatch {
+                        match_type: EncodingMatchType::Exact,
+                        q: QValue::from_millis(1000).unwrap(),
+                    })
+                } else if token == b"*" {
+                    Some(EncodingMatch {
+                        match_type: EncodingMatchType::Wildcard,
+                        q: QValue::from_millis(1000).unwrap(),
+                    })
                 } else {
-                    return None;
-                }
+                    None
+                };
+                state = State::SeenEncoding;
             }
             State::SeenEncoding => {
                 lexer::ows(input, &mut c);
@@ -84,7 +81,8 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
                     lexer::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingEncoding;
-                } else if lexer::byte(b';')(input, &mut c).is_ok() {
+                } else {
+                    lexer::byte(b';')(input, &mut c).ok()?;
                     lexer::ows(input, &mut c);
                     state = State::SeenSemicolon;
                 }

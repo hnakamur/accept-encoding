@@ -23,50 +23,40 @@ pub fn match_for_mime_type(input: &[u8], mime_type: &[u8]) -> Option<MimeTypeMat
         match state {
             State::SearchingMainType => {
                 let c1 = c;
-                if lexer::token(input, &mut c).is_ok() {
-                    let token = c1.slice(input, c);
-                    cur_main_type = Some(token);
-                    state = State::SeenMainType;
-                } else {
-                    return None;
-                }
+                lexer::token(input, &mut c).ok()?;
+                let token = c1.slice(input, c);
+                cur_main_type = Some(token);
+                state = State::SeenMainType;
             }
             State::SeenMainType => {
-                if lexer::byte(b'/')(input, &mut c).is_ok() {
-                    state = State::SeenSlash;
-                } else {
-                    return None;
-                }
+                lexer::byte(b'/')(input, &mut c).ok()?;
+                state = State::SeenSlash;
             }
             State::SeenSlash => {
                 let c1 = c;
-                if lexer::token(input, &mut c).is_ok() {
-                    let subtype = c1.slice(input, c);
-                    let main_type = cur_main_type.unwrap();
-                    if let Some(match_type) =
-                        get_mime_type_match_type(main_type, subtype, want_main_type, want_subtype)
-                    {
-                        cur_result = Some(MimeTypeMatch {
-                            match_type,
-                            q: QValue::from_millis(1000).unwrap(),
-                        })
-                    }
-                    state = State::SeenSubType;
-                } else {
-                    return None;
+                lexer::token(input, &mut c).ok()?;
+                let subtype = c1.slice(input, c);
+                let main_type = cur_main_type.unwrap();
+                if let Some(match_type) =
+                    get_mime_type_match_type(main_type, subtype, want_main_type, want_subtype)
+                {
+                    cur_result = Some(MimeTypeMatch {
+                        match_type,
+                        q: QValue::from_millis(1000).unwrap(),
+                    })
                 }
+                state = State::SeenSubType;
             }
             State::SeenSubType => {
                 lexer::ows(input, &mut c);
                 if lexer::byte(b';')(input, &mut c).is_ok() {
                     lexer::ows(input, &mut c);
                     state = State::SeenSemicolon;
-                } else if lexer::byte(b',')(input, &mut c).is_ok() {
+                } else {
+                    lexer::byte(b',')(input, &mut c).ok()?;
                     lexer::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingMainType;
-                } else {
-                    return None;
                 }
             }
             State::SeenSemicolon => {
@@ -99,11 +89,10 @@ pub fn match_for_mime_type(input: &[u8], mime_type: &[u8]) -> Option<MimeTypeMat
                     lexer::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingMainType;
-                } else if lexer::byte(b';')(input, &mut c).is_ok() {
+                } else {
+                    lexer::byte(b';')(input, &mut c).ok()?;
                     lexer::ows(input, &mut c);
                     state = State::SeenSemicolon;
-                } else {
-                    return None;
                 }
             }
         }
