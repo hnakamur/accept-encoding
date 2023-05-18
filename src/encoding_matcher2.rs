@@ -6,8 +6,102 @@ use crate::{
     q_value::QValue,
 };
 
-pub fn match_for_encoding(header_value: &[u8], encoding: &[u8]) -> Option<EncodingMatch> {
-    EncodingMatcher::new(header_value).match_encoding(encoding)
+pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch> {
+    let mut state = State::SearchingEncoding;
+    let mut cur_result: Option<EncodingMatch> = None;
+    let mut best_result: Option<EncodingMatch> = None;
+
+    let is_gzip = bytes_eq_ignore_case(encoding, b"gzip");
+    let is_compress = bytes_eq_ignore_case(encoding, b"compress");
+
+    let mut is_q_param = false;
+    let mut c = Cursor(0);
+    while !c.eof(input) {
+        match state {
+            State::SearchingEncoding => {
+                let c1 = c;
+                if let Ok(()) = lexer2::token(input, &mut c) {
+                    let token = c1.slice(input, c);
+                    cur_result = if bytes_eq_ignore_case(token, encoding)
+                        || (is_gzip && bytes_eq_ignore_case(token, b"x-gzip"))
+                        || (is_compress && bytes_eq_ignore_case(token, b"x-compress"))
+                    {
+                        Some(EncodingMatch {
+                            match_type: EncodingMatchType::Exact,
+                            q: QValue::from_millis(1000).unwrap(),
+                        })
+                    } else if token == b"*" {
+                        Some(EncodingMatch {
+                            match_type: EncodingMatchType::Wildcard,
+                            q: QValue::from_millis(1000).unwrap(),
+                        })
+                    } else {
+                        None
+                    };
+                    state = State::SeenEncoding;
+                } else {
+                    return None;
+                }
+            }
+            State::SeenEncoding => {
+                lexer2::ows(input, &mut c);
+                if let Ok(()) = lexer2::byte(b';')(input, &mut c) {
+                    lexer2::ows(input, &mut c);
+                    state = State::SeenSemicolon;
+                } else if let Ok(()) = lexer2::byte(b',')(input, &mut c) {
+                    lexer2::ows(input, &mut c);
+                    may_update_best_result(&mut cur_result, &mut best_result);
+                    state = State::SearchingEncoding;
+                }
+            }
+            State::SeenSemicolon => {
+                let c1 = c;
+                lexer2::token(input, &mut c).ok()?;
+                let param_name = c1.slice(input, c);
+                is_q_param = bytes_eq_ignore_case(param_name, b"q");
+                state = State::SeenParameterName;
+            }
+            State::SeenParameterName => {
+                lexer2::byte(b'=')(input, &mut c).ok()?;
+                state = State::SeenEqual;
+            }
+            State::SeenEqual => {
+                if is_q_param {
+                    let c1 = c;
+                    lexer2::q_value(input, &mut c).ok()?;
+                    if let Some(cur_result) = cur_result.as_mut() {
+                        cur_result.q =
+                            QValue::try_from(str::from_utf8(c1.slice(input, c)).unwrap()).unwrap();
+                    }
+                } else {
+                    lexer2::alt(lexer2::token, lexer2::quoted_string)(input, &mut c).ok()?;
+                }
+                state = State::SeenParameterValue;
+            }
+            State::SeenParameterValue => {
+                lexer2::ows(input, &mut c);
+                if let Ok(()) = lexer2::byte(b',')(input, &mut c) {
+                    lexer2::ows(input, &mut c);
+                    may_update_best_result(&mut cur_result, &mut best_result);
+                    state = State::SearchingEncoding;
+                } else if let Ok(()) = lexer2::byte(b';')(input, &mut c) {
+                    lexer2::ows(input, &mut c);
+                    state = State::SeenSemicolon;
+                }
+            }
+        }
+    }
+    may_update_best_result(&mut cur_result, &mut best_result);
+    best_result.take()
+}
+
+fn may_update_best_result(
+    cur_result: &mut Option<EncodingMatch>,
+    best_result: &mut Option<EncodingMatch>,
+) {
+    if cur_result.gt(&best_result) {
+        *best_result = cur_result.take();
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
@@ -34,13 +128,6 @@ impl PartialOrd for EncodingMatch {
     }
 }
 
-pub(crate) struct EncodingMatcher<'a> {
-    input: &'a [u8],
-    state: State,
-    cur_result: Option<EncodingMatch>,
-    best_result: Option<EncodingMatch>,
-}
-
 #[derive(Debug)]
 enum State {
     SearchingEncoding,
@@ -49,110 +136,6 @@ enum State {
     SeenParameterName,
     SeenEqual,
     SeenParameterValue,
-}
-
-impl<'a> EncodingMatcher<'a> {
-    pub(crate) fn new(input: &'a [u8]) -> Self {
-        Self {
-            input,
-            state: State::SearchingEncoding,
-            cur_result: None,
-            best_result: None,
-        }
-    }
-
-    pub(crate) fn match_encoding(&mut self, encoding: &[u8]) -> Option<EncodingMatch> {
-        let is_gzip = bytes_eq_ignore_case(encoding, b"gzip");
-        let is_compress = bytes_eq_ignore_case(encoding, b"compress");
-
-        let mut is_q_param = false;
-        let mut c = Cursor(0);
-        while !c.eof(self.input) {
-            match self.state {
-                State::SearchingEncoding => {
-                    let c1 = c;
-                    if let Ok(()) = lexer2::token(self.input, &mut c) {
-                        let token = c1.slice(self.input, c);
-                        self.cur_result = if bytes_eq_ignore_case(token, encoding)
-                            || (is_gzip && bytes_eq_ignore_case(token, b"x-gzip"))
-                            || (is_compress && bytes_eq_ignore_case(token, b"x-compress"))
-                        {
-                            Some(EncodingMatch {
-                                match_type: EncodingMatchType::Exact,
-                                q: QValue::from_millis(1000).unwrap(),
-                            })
-                        } else if token == b"*" {
-                            Some(EncodingMatch {
-                                match_type: EncodingMatchType::Wildcard,
-                                q: QValue::from_millis(1000).unwrap(),
-                            })
-                        } else {
-                            None
-                        };
-                        self.state = State::SeenEncoding;
-                    } else {
-                        return None;
-                    }
-                }
-                State::SeenEncoding => {
-                    lexer2::ows(self.input, &mut c);
-                    if let Ok(()) = lexer2::byte(b';')(self.input, &mut c) {
-                        lexer2::ows(self.input, &mut c);
-                        self.state = State::SeenSemicolon;
-                    } else if let Ok(()) = lexer2::byte(b',')(self.input, &mut c) {
-                        lexer2::ows(self.input, &mut c);
-                        self.may_update_best_result();
-                        self.state = State::SearchingEncoding;
-                    }
-                }
-                State::SeenSemicolon => {
-                    let c1 = c;
-                    lexer2::token(self.input, &mut c).ok()?;
-                    let param_name = c1.slice(self.input, c);
-                    is_q_param = bytes_eq_ignore_case(param_name, b"q");
-                    self.state = State::SeenParameterName;
-                }
-                State::SeenParameterName => {
-                    lexer2::byte(b'=')(self.input, &mut c).ok()?;
-                    self.state = State::SeenEqual;
-                }
-                State::SeenEqual => {
-                    if is_q_param {
-                        let c1 = c;
-                        lexer2::q_value(self.input, &mut c).ok()?;
-                        if let Some(cur_result) = self.cur_result.as_mut() {
-                            cur_result.q =
-                                QValue::try_from(str::from_utf8(c1.slice(self.input, c)).unwrap())
-                                    .unwrap();
-                        }
-                    } else {
-                        lexer2::alt(lexer2::token, lexer2::quoted_string)(self.input, &mut c)
-                            .ok()?;
-                    }
-                    self.state = State::SeenParameterValue;
-                }
-                State::SeenParameterValue => {
-                    lexer2::ows(self.input, &mut c);
-                    if let Ok(()) = lexer2::byte(b',')(self.input, &mut c) {
-                        lexer2::ows(self.input, &mut c);
-                        self.may_update_best_result();
-                        self.state = State::SearchingEncoding;
-                    } else if let Ok(()) = lexer2::byte(b';')(self.input, &mut c) {
-                        lexer2::ows(self.input, &mut c);
-                        self.state = State::SeenSemicolon;
-                    }
-                }
-            }
-        }
-        self.may_update_best_result();
-        self.best_result.take()
-    }
-
-    fn may_update_best_result(&mut self) {
-        if self.cur_result.gt(&self.best_result) {
-            self.best_result = self.cur_result.take();
-        }
-    }
 }
 
 #[cfg(test)]
