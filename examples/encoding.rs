@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use accept_encoding::encoding_matcher2::match_for_encoding;
+use accept_encoding::match_for_encoding;
 
 fn main() {
     for _ in 0..10_000_000 {

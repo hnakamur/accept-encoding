@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    encoding_matcher::{match_for_encoding, EncodingMatchType},
+    encoding_matcher2::{match_for_encoding, EncodingMatchType},
     mime_type_matcher::{match_for_mime_type, MimeTypeMatchType},
 };
 
