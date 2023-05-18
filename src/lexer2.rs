@@ -32,36 +32,6 @@ impl Cursor {
     }
 }
 
-pub(crate) fn semicolon(input: &[u8], c: &mut Cursor) -> ParseResult {
-    if let Some(b2) = c.peek(input) {
-        if b2 == b';' {
-            c.advance(1);
-            return Ok(());
-        }
-    }
-    Err(ParseError)
-}
-
-pub(crate) fn comma(input: &[u8], c: &mut Cursor) -> ParseResult {
-    if let Some(b2) = c.peek(input) {
-        if b2 == b',' {
-            c.advance(1);
-            return Ok(());
-        }
-    }
-    Err(ParseError)
-}
-
-pub(crate) fn equal(input: &[u8], c: &mut Cursor) -> ParseResult {
-    if let Some(b2) = c.peek(input) {
-        if b2 == b'=' {
-            c.advance(1);
-            return Ok(());
-        }
-    }
-    Err(ParseError)
-}
-
 pub(crate) fn byte(b: u8) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
     move |input: &[u8], c: &mut Cursor| {
         if let Some(b2) = c.peek(input) {
