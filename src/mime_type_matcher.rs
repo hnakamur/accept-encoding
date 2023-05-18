@@ -1,21 +1,124 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, str};
 
 use crate::{
     byte_slice::bytes_eq_ignore_case,
-    lexer::{comma, equal, ows, parameter_value, q_value, semicolon, slash, token, LexerToken},
+    lexer2::{self, Cursor},
     q_value::QValue,
 };
 
-pub fn match_for_mime_type(header_value: &[u8], mime_type: &[u8]) -> Option<MimeTypeMatch> {
-    MimeTypeMatcher::new(header_value).match_mime_type(mime_type)
+pub fn match_for_mime_type(input: &[u8], mime_type: &[u8]) -> Option<MimeTypeMatch> {
+    let (want_main_type, want_subtype) = match split_mime_type(mime_type) {
+        Some((main_type, subtype)) => (main_type, subtype),
+        None => return None,
+    };
+
+    let mut c = Cursor(0);
+    let mut state = State::SearchingMainType;
+    let mut cur_result: Option<MimeTypeMatch> = None;
+    let mut best_result: Option<MimeTypeMatch> = None;
+
+    let mut cur_main_type = None;
+    let mut is_q_param = false;
+    while !c.eof(input) {
+        match state {
+            State::SearchingMainType => {
+                let c1 = c;
+                if lexer2::token(input, &mut c).is_ok() {
+                    let token = c1.slice(input, c);
+                    cur_main_type = Some(token);
+                    state = State::SeenMainType;
+                } else {
+                    return None;
+                }
+            }
+            State::SeenMainType => {
+                if lexer2::byte(b'/')(input, &mut c).is_ok() {
+                    state = State::SeenSlash;
+                } else {
+                    return None;
+                }
+            }
+            State::SeenSlash => {
+                let c1 = c;
+                if lexer2::token(input, &mut c).is_ok() {
+                    let subtype = c1.slice(input, c);
+                    let main_type = cur_main_type.unwrap();
+                    if let Some(match_type) =
+                        get_mime_type_match_type(main_type, subtype, want_main_type, want_subtype)
+                    {
+                        cur_result = Some(MimeTypeMatch {
+                            match_type,
+                            q: QValue::from_millis(1000).unwrap(),
+                        })
+                    }
+                    state = State::SeenSubType;
+                } else {
+                    return None;
+                }
+            }
+            State::SeenSubType => {
+                lexer2::ows(input, &mut c);
+                if lexer2::byte(b';')(input, &mut c).is_ok() {
+                    lexer2::ows(input, &mut c);
+                    state = State::SeenSemicolon;
+                } else if lexer2::byte(b',')(input, &mut c).is_ok() {
+                    lexer2::ows(input, &mut c);
+                    may_update_best_result(&mut cur_result, &mut best_result);
+                    state = State::SearchingMainType;
+                } else {
+                    return None;
+                }
+            }
+            State::SeenSemicolon => {
+                let c1 = c;
+                lexer2::token(input, &mut c).ok()?;
+                let param_name = c1.slice(input, c);
+                is_q_param = bytes_eq_ignore_case(param_name, b"q");
+                state = State::SeenParameterName;
+            }
+            State::SeenParameterName => {
+                lexer2::byte(b'=')(input, &mut c).ok()?;
+                state = State::SeenEqual;
+            }
+            State::SeenEqual => {
+                if is_q_param {
+                    let c1 = c;
+                    lexer2::q_value(input, &mut c).ok()?;
+                    if let Some(cur_result) = cur_result.as_mut() {
+                        cur_result.q =
+                            QValue::try_from(str::from_utf8(c1.slice(input, c)).unwrap()).unwrap();
+                    }
+                } else {
+                    lexer2::alt(lexer2::token, lexer2::quoted_string)(input, &mut c).ok()?;
+                }
+                state = State::SeenParameterValue;
+            }
+            State::SeenParameterValue => {
+                lexer2::ows(input, &mut c);
+                if lexer2::byte(b',')(input, &mut c).is_ok() {
+                    lexer2::ows(input, &mut c);
+                    may_update_best_result(&mut cur_result, &mut best_result);
+                    state = State::SearchingMainType;
+                } else if lexer2::byte(b';')(input, &mut c).is_ok() {
+                    lexer2::ows(input, &mut c);
+                    state = State::SeenSemicolon;
+                } else {
+                    return None;
+                }
+            }
+        }
+    }
+    may_update_best_result(&mut cur_result, &mut best_result);
+    best_result.take()
 }
 
-pub(crate) struct MimeTypeMatcher<'a> {
-    value: &'a [u8],
-    pos: usize,
-    state: State,
-    cur_result: Option<MimeTypeMatch>,
-    best_result: Option<MimeTypeMatch>,
+fn may_update_best_result(
+    cur_result: &mut Option<MimeTypeMatch>,
+    best_result: &mut Option<MimeTypeMatch>,
+) {
+    if cur_result.gt(&best_result) {
+        *best_result = cur_result.take();
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
@@ -40,142 +143,6 @@ impl Ord for MimeTypeMatch {
 impl PartialOrd for MimeTypeMatch {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-#[derive(Debug)]
-enum State {
-    SearchingMainType,
-    SeenMainType,
-    SeenSlash,
-    SeenSubType,
-    SeenSemicolon,
-    SeenParameterName,
-    SeenEqual,
-    SeenParameterValue,
-}
-
-impl<'a> MimeTypeMatcher<'a> {
-    pub(crate) fn new(value: &'a [u8]) -> Self {
-        Self {
-            value,
-            pos: 0,
-            state: State::SearchingMainType,
-            cur_result: None,
-            best_result: None,
-        }
-    }
-
-    pub(crate) fn match_mime_type(&mut self, mime_type: &[u8]) -> Option<MimeTypeMatch> {
-        let (want_main_type, want_subtype) = match split_mime_type(mime_type) {
-            Some((main_type, subtype)) => (main_type, subtype),
-            None => return None,
-        };
-
-        let mut cur_main_type = None;
-        let mut is_q_param = false;
-        while self.pos < self.value.len() {
-            match self.state {
-                State::SearchingMainType => {
-                    if let Some(LexerToken::Token(token)) = token(self.value, &mut self.pos) {
-                        cur_main_type = Some(token);
-                        self.state = State::SeenMainType;
-                    } else {
-                        return None;
-                    }
-                }
-                State::SeenMainType => {
-                    if let Some(LexerToken::Slash) = slash(self.value, &mut self.pos) {
-                        self.state = State::SeenSlash;
-                    } else {
-                        return None;
-                    }
-                }
-                State::SeenSlash => {
-                    if let Some(LexerToken::Token(subtype)) = token(self.value, &mut self.pos) {
-                        let main_type = cur_main_type.unwrap();
-                        if let Some(match_type) = get_mime_type_match_type(
-                            main_type,
-                            subtype,
-                            want_main_type,
-                            want_subtype,
-                        ) {
-                            self.cur_result = Some(MimeTypeMatch {
-                                match_type,
-                                q: QValue::from_millis(1000).unwrap(),
-                            })
-                        }
-                        self.state = State::SeenSubType;
-                    } else {
-                        return None;
-                    }
-                }
-                State::SeenSubType => {
-                    ows(self.value, &mut self.pos);
-                    if let Some(LexerToken::Semicolon) = semicolon(self.value, &mut self.pos) {
-                        ows(self.value, &mut self.pos);
-                        self.state = State::SeenSemicolon;
-                    } else if let Some(LexerToken::Comma) = comma(self.value, &mut self.pos) {
-                        ows(self.value, &mut self.pos);
-                        self.may_update_best_result();
-                        self.state = State::SearchingMainType;
-                    } else {
-                        return None;
-                    }
-                }
-                State::SeenSemicolon => {
-                    if let Some(LexerToken::Token(param_name)) = token(self.value, &mut self.pos) {
-                        is_q_param = bytes_eq_ignore_case(param_name, b"q");
-                        self.state = State::SeenParameterName;
-                    } else {
-                        return None;
-                    }
-                }
-                State::SeenParameterName => {
-                    if Some(LexerToken::Equal) == equal(self.value, &mut self.pos) {
-                        self.state = State::SeenEqual;
-                    } else {
-                        return None;
-                    }
-                }
-                State::SeenEqual => {
-                    if is_q_param {
-                        if let Some(LexerToken::QValue(q)) = q_value(self.value, &mut self.pos) {
-                            if let Some(cur_result) = self.cur_result.as_mut() {
-                                cur_result.q = q;
-                            }
-                        } else {
-                            return None;
-                        }
-                    } else if parameter_value(self.value, &mut self.pos).is_none() {
-                        return None;
-                    }
-                    self.state = State::SeenParameterValue;
-                }
-                State::SeenParameterValue => {
-                    ows(self.value, &mut self.pos);
-                    if let Some(LexerToken::Comma) = comma(self.value, &mut self.pos) {
-                        ows(self.value, &mut self.pos);
-                        self.may_update_best_result();
-                        self.state = State::SearchingMainType;
-                    } else if let Some(LexerToken::Semicolon) = semicolon(self.value, &mut self.pos)
-                    {
-                        ows(self.value, &mut self.pos);
-                        self.state = State::SeenSemicolon;
-                    } else {
-                        return None;
-                    }
-                }
-            }
-        }
-        self.may_update_best_result();
-        self.best_result.take()
-    }
-
-    fn may_update_best_result(&mut self) {
-        if self.cur_result.gt(&self.best_result) {
-            self.best_result = self.cur_result.take();
-        }
     }
 }
 
@@ -210,6 +177,18 @@ fn get_mime_type_match_type(
     } else {
         None
     }
+}
+
+#[derive(Debug)]
+enum State {
+    SearchingMainType,
+    SeenMainType,
+    SeenSlash,
+    SeenSubType,
+    SeenSemicolon,
+    SeenParameterName,
+    SeenEqual,
+    SeenParameterValue,
 }
 
 #[cfg(test)]
