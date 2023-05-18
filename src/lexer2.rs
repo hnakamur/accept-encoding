@@ -1,11 +1,7 @@
-use std::str;
-
-use crate::q_value::QValue;
-
 #[derive(Debug, PartialEq)]
 pub(crate) struct ParseError;
 
-pub(crate) type ParseResult<O> = Result<O, ParseError>;
+pub(crate) type ParseResult = Result<(), ParseError>;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) struct Cursor(pub usize);
@@ -36,7 +32,7 @@ impl Cursor {
     }
 }
 
-pub(crate) fn byte(b: u8) -> impl Fn(&[u8], &mut Cursor) -> ParseResult<()> {
+pub(crate) fn byte(b: u8) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
     move |input: &[u8], c: &mut Cursor| {
         if let Some(b2) = c.peek(input) {
             if b2 == b {
@@ -48,7 +44,7 @@ pub(crate) fn byte(b: u8) -> impl Fn(&[u8], &mut Cursor) -> ParseResult<()> {
     }
 }
 
-fn match_m_n<F>(pred: F, m: usize, n: usize) -> impl Fn(&[u8], &mut Cursor) -> ParseResult<()>
+fn match_m_n<F>(pred: F, m: usize, n: usize) -> impl Fn(&[u8], &mut Cursor) -> ParseResult
 where
     F: Fn(u8) -> bool,
 {
@@ -73,7 +69,7 @@ where
     }
 }
 
-fn match_one_or_more<F>(pred: F) -> impl Fn(&[u8], &mut Cursor) -> ParseResult<()>
+fn match_one_or_more<F>(pred: F) -> impl Fn(&[u8], &mut Cursor) -> ParseResult
 where
     F: Fn(u8) -> bool,
 {
@@ -110,9 +106,9 @@ where
 }
 
 fn pair(
-    parser1: impl Fn(&[u8], &mut Cursor) -> ParseResult<()>,
-    parser2: impl Fn(&[u8], &mut Cursor) -> ParseResult<()>,
-) -> impl Fn(&[u8], &mut Cursor) -> ParseResult<()> {
+    parser1: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+    parser2: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
     move |input: &[u8], c: &mut Cursor| {
         parser1(input, c)?;
         parser2(input, c)
@@ -120,8 +116,8 @@ fn pair(
 }
 
 fn opt(
-    parser: impl Fn(&[u8], &mut Cursor) -> ParseResult<()>,
-) -> impl Fn(&[u8], &mut Cursor) -> ParseResult<()> {
+    parser: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
     move |input: &[u8], c: &mut Cursor| {
         let c0 = *c;
         match parser(input, c) {
@@ -135,9 +131,9 @@ fn opt(
 }
 
 pub(crate) fn alt(
-    parser1: impl Fn(&[u8], &mut Cursor) -> ParseResult<()>,
-    parser2: impl Fn(&[u8], &mut Cursor) -> ParseResult<()>,
-) -> impl Fn(&[u8], &mut Cursor) -> ParseResult<()> {
+    parser1: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+    parser2: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
     move |input: &[u8], c: &mut Cursor| {
         let c0 = *c;
         match parser1(input, c) {
@@ -154,7 +150,7 @@ fn escaped<F, G>(
     is_normal_char: F,
     escape_char: u8,
     is_escapable_char: G,
-) -> impl Fn(&[u8], &mut Cursor) -> ParseResult<()>
+) -> impl Fn(&[u8], &mut Cursor) -> ParseResult
 where
     F: Fn(u8) -> bool,
     G: Fn(u8) -> bool,
@@ -182,13 +178,7 @@ where
     }
 }
 
-pub(crate) fn token<'a>(input: &'a [u8], c: &mut Cursor) -> ParseResult<&'a [u8]> {
-    let c0 = *c;
-    match_one_or_more(is_tchar)(input, c)?;
-    Ok(c0.slice(input, *c))
-}
-
-pub(crate) fn skip_token(input: &[u8], c: &mut Cursor) -> ParseResult<()> {
+pub(crate) fn token(input: &[u8], c: &mut Cursor) -> ParseResult {
     match_one_or_more(is_tchar)(input, c)
 }
 
@@ -219,7 +209,7 @@ const TCHAR_TABLE: [bool; 256] = [
     false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
 ];
 
-pub(crate) fn quoted_string(input: &[u8], c: &mut Cursor) -> ParseResult<()> {
+pub(crate) fn quoted_string(input: &[u8], c: &mut Cursor) -> ParseResult {
     byte(b'"')(input, c)?;
     escaped(is_qdtext, b'\\', is_quoted_pair_char)(input, c)?;
     byte(b'"')(input, c)
@@ -292,16 +282,14 @@ fn is_digit(b: u8) -> bool {
     b.is_ascii_digit()
 }
 
-pub(crate) fn q_value(input: &[u8], c: &mut Cursor) -> ParseResult<QValue> {
-    let c1 = *c;
+pub(crate) fn q_value(input: &[u8], c: &mut Cursor) -> ParseResult {
     alt(
         pair(byte(b'0'), opt(pair(byte(b'.'), match_m_n(is_digit, 0, 3)))),
         pair(
             byte(b'1'),
             opt(pair(byte(b'.'), match_m_n(|b| b == b'0', 0, 3))),
         ),
-    )(input, c)?;
-    Ok(QValue::try_from(str::from_utf8(c1.slice(input, *c)).unwrap()).unwrap())
+    )(input, c)
 }
 
 #[cfg(test)]
@@ -374,13 +362,13 @@ mod tests {
         {
             let input = b"gzip";
             let mut c = Cursor(0);
-            assert_eq!(Ok(&b"gzip"[..]), token(input, &mut c));
+            assert_eq!(Ok(()), token(input, &mut c));
             assert_eq!(Cursor(input.len()), c);
         }
         {
             let input = b"gzip, ";
             let mut c = Cursor(0);
-            assert_eq!(Ok(&b"gzip"[..]), token(input, &mut c));
+            assert_eq!(Ok(()), token(input, &mut c));
             assert_eq!(Cursor(4), c);
         }
         {
@@ -439,7 +427,7 @@ mod tests {
 
     #[test]
     fn test_pair() {
-        fn dot_followed_by_at_most_three_zeros(input: &[u8], c: &mut Cursor) -> ParseResult<()> {
+        fn dot_followed_by_at_most_three_zeros(input: &[u8], c: &mut Cursor) -> ParseResult {
             pair(byte(b'.'), match_m_n(|b| b == b'0', 0, 3))(input, c)
         }
 
@@ -474,109 +462,79 @@ mod tests {
         {
             let input = b"0";
             let mut c = Cursor(0);
-            assert_eq!(Ok(QValue::from_millis(0).unwrap()), q_value(input, &mut c));
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(1), c);
         }
         {
             let input = b"0.";
             let mut c = Cursor(0);
-            assert_eq!(Ok(QValue::from_millis(0).unwrap()), q_value(input, &mut c));
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(2), c);
         }
         {
             let input = b"0.,";
             let mut c = Cursor(0);
-            assert_eq!(Ok(QValue::from_millis(0).unwrap()), q_value(input, &mut c));
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(2), c);
         }
         {
             let input = b"0.8";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(800).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(3), c);
         }
         {
             let input = b"0.8,";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(800).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(3), c);
         }
         {
             let input = b"0.1239";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(123).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(5), c);
         }
         {
             let input = b"1";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(1000).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(1), c);
         }
         {
             let input = b"1.";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(1000).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(2), c);
         }
         {
             let input = b"1.0";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(1000).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(3), c);
         }
         {
             let input = b"1.00";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(1000).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(4), c);
         }
         {
             let input = b"1.000";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(1000).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(5), c);
         }
         {
             let input = b"1.0000";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(1000).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(5), c);
         }
         {
             let input = b"1.1";
             let mut c = Cursor(0);
-            assert_eq!(
-                Ok(QValue::from_millis(1000).unwrap()),
-                q_value(input, &mut c)
-            );
+            assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(2), c);
         }
     }

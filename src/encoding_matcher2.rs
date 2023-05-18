@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, str};
 
 use crate::{
     byte_slice::bytes_eq_ignore_case,
@@ -70,7 +70,9 @@ impl<'a> EncodingMatcher<'a> {
         while !c.eof(self.input) {
             match self.state {
                 State::SearchingEncoding => {
-                    if let Ok(token) = lexer2::token(self.input, &mut c) {
+                    let c1 = c;
+                    if let Ok(()) = lexer2::token(self.input, &mut c) {
+                        let token = c1.slice(self.input, c);
                         self.cur_result = if bytes_eq_ignore_case(token, encoding)
                             || (is_gzip && bytes_eq_ignore_case(token, b"x-gzip"))
                             || (is_compress && bytes_eq_ignore_case(token, b"x-compress"))
@@ -116,12 +118,15 @@ impl<'a> EncodingMatcher<'a> {
                 }
                 State::SeenEqual => {
                     if is_q_param {
-                        let q = lexer2::q_value(self.input, &mut c).ok()?;
+                        let c1 = c;
+                        lexer2::q_value(self.input, &mut c).ok()?;
                         if let Some(cur_result) = self.cur_result.as_mut() {
-                            cur_result.q = q;
+                            cur_result.q =
+                                QValue::try_from(str::from_utf8(c1.slice(self.input, c)).unwrap())
+                                    .unwrap();
                         }
                     } else {
-                        lexer2::alt(lexer2::skip_token, lexer2::quoted_string)(self.input, &mut c)
+                        lexer2::alt(lexer2::token, lexer2::quoted_string)(self.input, &mut c)
                             .ok()?;
                     }
                     self.state = State::SeenParameterValue;
