@@ -20,7 +20,7 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
         match state {
             State::SearchingEncoding => {
                 let c1 = c;
-                if let Ok(()) = lexer2::token(input, &mut c) {
+                if lexer2::token(input, &mut c).is_ok() {
                     let token = c1.slice(input, c);
                     cur_result = if bytes_eq_ignore_case(token, encoding)
                         || (is_gzip && bytes_eq_ignore_case(token, b"x-gzip"))
@@ -45,10 +45,10 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
             }
             State::SeenEncoding => {
                 lexer2::ows(input, &mut c);
-                if let Ok(()) = lexer2::byte(b';')(input, &mut c) {
+                if lexer2::byte(b';')(input, &mut c).is_ok() {
                     lexer2::ows(input, &mut c);
                     state = State::SeenSemicolon;
-                } else if let Ok(()) = lexer2::byte(b',')(input, &mut c) {
+                } else if lexer2::byte(b',')(input, &mut c).is_ok() {
                     lexer2::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingEncoding;
@@ -80,11 +80,11 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
             }
             State::SeenParameterValue => {
                 lexer2::ows(input, &mut c);
-                if let Ok(()) = lexer2::byte(b',')(input, &mut c) {
+                if lexer2::byte(b',')(input, &mut c).is_ok() {
                     lexer2::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingEncoding;
-                } else if let Ok(()) = lexer2::byte(b';')(input, &mut c) {
+                } else if lexer2::byte(b';')(input, &mut c).is_ok() {
                     lexer2::ows(input, &mut c);
                     state = State::SeenSemicolon;
                 }
