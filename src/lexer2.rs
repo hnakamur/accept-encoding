@@ -1,7 +1,7 @@
 #[derive(Debug, PartialEq)]
-pub(crate) struct ParseError(Cursor);
+pub(crate) struct ParseError;
 
-pub(crate) type ParseResult = Result<Cursor, ParseError>;
+pub(crate) type ParseResult = Result<(), ParseError>;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) struct Cursor(pub usize);
@@ -22,8 +22,8 @@ impl Cursor {
     }
 
     #[inline]
-    pub fn advanced(&self, n: usize) -> Self {
-        Self(self.0 + n)
+    pub fn advance(&mut self, n: usize) {
+        self.0 += n;
     }
 
     #[inline]
@@ -32,132 +32,147 @@ impl Cursor {
     }
 }
 
-pub(crate) fn semicolon(input: &[u8], c: Cursor) -> ParseResult {
+pub(crate) fn semicolon(input: &[u8], c: &mut Cursor) -> ParseResult {
     if let Some(b2) = c.peek(input) {
         if b2 == b';' {
-            return Ok(c.advanced(1));
+            c.advance(1);
+            return Ok(());
         }
     }
-    Err(ParseError(c))
+    Err(ParseError)
 }
 
-pub(crate) fn comma(input: &[u8], c: Cursor) -> ParseResult {
+pub(crate) fn comma(input: &[u8], c: &mut Cursor) -> ParseResult {
     if let Some(b2) = c.peek(input) {
         if b2 == b',' {
-            return Ok(c.advanced(1));
+            c.advance(1);
+            return Ok(());
         }
     }
-    Err(ParseError(c))
+    Err(ParseError)
 }
 
-pub(crate) fn equal(input: &[u8], c: Cursor) -> ParseResult {
+pub(crate) fn equal(input: &[u8], c: &mut Cursor) -> ParseResult {
     if let Some(b2) = c.peek(input) {
         if b2 == b'=' {
-            return Ok(c.advanced(1));
+            c.advance(1);
+            return Ok(());
         }
     }
-    Err(ParseError(c))
+    Err(ParseError)
 }
 
-pub(crate) fn byte(b: u8) -> impl Fn(&[u8], Cursor) -> ParseResult {
-    move |input: &[u8], c: Cursor| {
+pub(crate) fn byte(b: u8) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
+    move |input: &[u8], c: &mut Cursor| {
         if let Some(b2) = c.peek(input) {
             if b2 == b {
-                return Ok(c.advanced(1));
+                c.advance(1);
+                return Ok(());
             }
         }
-        Err(ParseError(c))
+        Err(ParseError)
     }
 }
 
-fn match_m_n<F>(pred: F, m: usize, n: usize) -> impl Fn(&[u8], Cursor) -> ParseResult
+fn match_m_n<F>(pred: F, m: usize, n: usize) -> impl Fn(&[u8], &mut Cursor) -> ParseResult
 where
     F: Fn(u8) -> bool,
 {
-    move |input: &[u8], c: Cursor| {
-        let mut c = c;
+    move |input: &[u8], c: &mut Cursor| {
         let mut count = 0;
         while let Some(b) = c.peek(input) {
             if pred(b) {
-                c = c.advanced(1);
+                c.advance(1);
                 count += 1;
                 if count == n {
-                    return Ok(c);
+                    return Ok(());
                 }
             } else {
                 break;
             }
         }
         if count >= m {
-            Ok(c)
+            Ok(())
         } else {
-            Err(ParseError(c))
+            Err(ParseError)
         }
     }
 }
 
-fn match_one_or_more<F>(pred: F) -> impl Fn(&[u8], Cursor) -> ParseResult
+fn match_one_or_more<F>(pred: F) -> impl Fn(&[u8], &mut Cursor) -> ParseResult
 where
     F: Fn(u8) -> bool,
 {
-    move |input: &[u8], c: Cursor| {
-        let mut c2 = c;
-        while let Some(b) = c2.peek(input) {
-            if pred(b) {
-                c2 = c2.advanced(1);
-            } else {
-                break;
-            }
-        }
-        if c2.0 > c.0 {
-            Ok(c2)
-        } else {
-            Err(ParseError(c))
-        }
-    }
-}
-
-fn match_zero_or_more<F>(pred: F) -> impl Fn(&[u8], Cursor) -> Cursor
-where
-    F: Fn(u8) -> bool,
-{
-    move |input: &[u8], c: Cursor| {
-        let mut c = c;
+    move |input: &[u8], c: &mut Cursor| {
+        let c0 = *c;
         while let Some(b) = c.peek(input) {
             if pred(b) {
-                c = c.advanced(1);
+                c.advance(1);
             } else {
                 break;
             }
         }
-        c
+        if c.0 > c0.0 {
+            Ok(())
+        } else {
+            Err(ParseError)
+        }
+    }
+}
+
+fn match_zero_or_more<F>(pred: F) -> impl Fn(&[u8], &mut Cursor)
+where
+    F: Fn(u8) -> bool,
+{
+    move |input: &[u8], c: &mut Cursor| {
+        while let Some(b) = c.peek(input) {
+            if pred(b) {
+                c.advance(1);
+            } else {
+                break;
+            }
+        }
     }
 }
 
 fn pair(
-    parser1: impl Fn(&[u8], Cursor) -> ParseResult,
-    parser2: impl Fn(&[u8], Cursor) -> ParseResult,
-) -> impl Fn(&[u8], Cursor) -> ParseResult {
-    move |input: &[u8], c: Cursor| {
-        let c = parser1(input, c)?;
+    parser1: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+    parser2: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
+    move |input: &[u8], c: &mut Cursor| {
+        parser1(input, c)?;
         parser2(input, c)
     }
 }
 
-fn opt(parser: impl Fn(&[u8], Cursor) -> ParseResult) -> impl Fn(&[u8], Cursor) -> ParseResult {
-    move |input: &[u8], c: Cursor| match parser(input, c) {
-        Ok(c) => Ok(c),
-        Err(_) => Ok(c),
+fn opt(
+    parser: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
+    move |input: &[u8], c: &mut Cursor| {
+        let c0 = *c;
+        match parser(input, c) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                *c = c0;
+                Ok(())
+            }
+        }
     }
 }
 
 pub(crate) fn alt(
-    parser1: impl Fn(&[u8], Cursor) -> ParseResult,
-    parser2: impl Fn(&[u8], Cursor) -> ParseResult,
-) -> impl Fn(&[u8], Cursor) -> ParseResult {
-    move |input: &[u8], c: Cursor| match parser1(input, c) {
-        Ok(c) => Ok(c),
-        Err(_) => parser2(input, c),
+    parser1: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+    parser2: impl Fn(&[u8], &mut Cursor) -> ParseResult,
+) -> impl Fn(&[u8], &mut Cursor) -> ParseResult {
+    move |input: &[u8], c: &mut Cursor| {
+        let c0 = *c;
+        match parser1(input, c) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                *c = c0;
+                parser2(input, c)
+            }
+        }
     }
 }
 
@@ -165,47 +180,36 @@ fn escaped<F, G>(
     is_normal_char: F,
     escape_char: u8,
     is_escapable_char: G,
-) -> impl Fn(&[u8], Cursor) -> ParseResult
+) -> impl Fn(&[u8], &mut Cursor) -> ParseResult
 where
     F: Fn(u8) -> bool,
     G: Fn(u8) -> bool,
 {
-    move |input: &[u8], c: Cursor| {
+    move |input: &[u8], c: &mut Cursor| {
         let mut seen_escape_char = false;
-        let mut c = c;
         while let Some(b) = c.peek(input) {
             if seen_escape_char {
                 if is_escapable_char(b) {
-                    c = c.advanced(1);
+                    c.advance(1);
                     seen_escape_char = false;
                 } else {
-                    return Err(ParseError(c));
+                    return Err(ParseError);
                 }
             } else if is_normal_char(b) {
-                c = c.advanced(1);
+                c.advance(1);
             } else if b == escape_char {
-                c = c.advanced(1);
+                c.advance(1);
                 seen_escape_char = true;
             } else {
                 break;
             }
         }
-        Ok(c)
+        Ok(())
     }
 }
 
-pub(crate) fn token(input: &[u8], c: Cursor) -> ParseResult {
-    let mut i = c.0;
-    while i < input.len() && is_tchar(input[i]) {
-        i += 1;
-    }
-    if i > c.0 {
-        Ok(Cursor(i))
-    } else {
-        Err(ParseError(Cursor(i)))
-    }
-
-    // match_one_or_more(is_tchar)(input, c)
+pub(crate) fn token(input: &[u8], c: &mut Cursor) -> ParseResult {
+    match_one_or_more(is_tchar)(input, c)
 }
 
 #[inline]
@@ -235,9 +239,9 @@ const TCHAR_TABLE: [bool; 256] = [
     false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
 ];
 
-pub(crate) fn quoted_string(input: &[u8], c: Cursor) -> ParseResult {
-    let c = byte(b'"')(input, c)?;
-    let c = escaped(is_qdtext, b'\\', is_quoted_pair_char)(input, c)?;
+pub(crate) fn quoted_string(input: &[u8], c: &mut Cursor) -> ParseResult {
+    byte(b'"')(input, c)?;
+    escaped(is_qdtext, b'\\', is_quoted_pair_char)(input, c)?;
     byte(b'"')(input, c)
 }
 
@@ -299,7 +303,7 @@ const QUOTED_PAIR_CHAR_TABLE: [bool; 256] = [
     true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,
 ];
 
-pub(crate) fn ows(input: &[u8], c: Cursor) -> Cursor {
+pub(crate) fn ows(input: &[u8], c: &mut Cursor) {
     match_zero_or_more(|b| matches!(b, b' ' | b'\t'))(input, c)
 }
 
@@ -308,7 +312,7 @@ fn is_digit(b: u8) -> bool {
     b.is_ascii_digit()
 }
 
-pub(crate) fn q_value(input: &[u8], c: Cursor) -> ParseResult {
+pub(crate) fn q_value(input: &[u8], c: &mut Cursor) -> ParseResult {
     alt(
         pair(byte(b'0'), opt(pair(byte(b'.'), match_m_n(is_digit, 0, 3)))),
         pair(
@@ -387,15 +391,21 @@ mod tests {
     fn test_token() {
         {
             let input = b"gzip";
-            assert_eq!(Ok(Cursor(input.len())), token(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), token(input, &mut c));
+            assert_eq!(Cursor(input.len()), c);
         }
         {
             let input = b"gzip, ";
-            assert_eq!(Ok(Cursor(4)), token(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), token(input, &mut c));
+            assert_eq!(Cursor(4), c);
         }
         {
             let input = b"";
-            assert_eq!(Err(ParseError(Cursor(0))), token(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Err(ParseError), token(input, &mut c));
+            assert_eq!(Cursor(0), c);
         }
     }
 
@@ -403,67 +413,77 @@ mod tests {
     fn test_quoted_string() {
         {
             let input = br#""""#;
-            assert_eq!(Ok(Cursor(input.len())), quoted_string(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), quoted_string(input, &mut c));
+            assert_eq!(Cursor(input.len()), c);
         }
         {
             let input = br#""foo""#;
-            assert_eq!(Ok(Cursor(input.len())), quoted_string(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), quoted_string(input, &mut c));
+            assert_eq!(Cursor(input.len()), c);
         }
         {
             let input = br#""foo\\tbar""#;
-            assert_eq!(Ok(Cursor(input.len())), quoted_string(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), quoted_string(input, &mut c));
+            assert_eq!(Cursor(input.len()), c);
         }
         {
             let input = b"\"\\\"foo\\\"\"";
-            assert_eq!(Ok(Cursor(input.len())), quoted_string(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), quoted_string(input, &mut c));
+            assert_eq!(Cursor(input.len()), c);
         }
         {
             let input = b"\x00";
-            assert_eq!(Err(ParseError(Cursor(0))), quoted_string(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Err(ParseError), quoted_string(input, &mut c));
+            assert_eq!(Cursor(0), c);
         }
         {
             let input = b"\"\\\x00";
-            assert_eq!(Err(ParseError(Cursor(2))), quoted_string(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Err(ParseError), quoted_string(input, &mut c));
+            assert_eq!(Cursor(2), c);
         }
         {
             let input = b"";
-            assert_eq!(Err(ParseError(Cursor(0))), quoted_string(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Err(ParseError), quoted_string(input, &mut c));
+            assert_eq!(Cursor(0), c);
         }
     }
 
     #[test]
     fn test_pair() {
-        fn dot_followed_by_at_most_three_zeros(input: &[u8], c: Cursor) -> ParseResult {
+        fn dot_followed_by_at_most_three_zeros(input: &[u8], c: &mut Cursor) -> ParseResult {
             pair(byte(b'.'), match_m_n(|b| b == b'0', 0, 3))(input, c)
         }
 
         {
             let input = b".";
-            assert_eq!(
-                Ok(Cursor(1)),
-                dot_followed_by_at_most_three_zeros(input, Cursor(0))
-            );
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), dot_followed_by_at_most_three_zeros(input, &mut c));
+            assert_eq!(Cursor(1), c);
         }
         {
             let input = b".0";
-            assert_eq!(
-                Ok(Cursor(2)),
-                dot_followed_by_at_most_three_zeros(input, Cursor(0))
-            );
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), dot_followed_by_at_most_three_zeros(input, &mut c));
+            assert_eq!(Cursor(2), c);
         }
         {
             let input = b".000";
-            assert_eq!(
-                Ok(Cursor(4)),
-                dot_followed_by_at_most_three_zeros(input, Cursor(0))
-            );
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), dot_followed_by_at_most_three_zeros(input, &mut c));
+            assert_eq!(Cursor(4), c);
         }
         {
             let input = b".0000";
-            assert_eq!(
-                Ok(Cursor(4)),
-                dot_followed_by_at_most_three_zeros(input, Cursor(0))
-            );
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), dot_followed_by_at_most_three_zeros(input, &mut c));
+            assert_eq!(Cursor(4), c);
         }
     }
 
@@ -471,55 +491,81 @@ mod tests {
     fn test_q_value() {
         {
             let input = b"0";
-            assert_eq!(Ok(Cursor(1)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(1), c);
         }
         {
             let input = b"0.";
-            assert_eq!(Ok(Cursor(2)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(2), c);
         }
         {
             let input = b"0.,";
-            assert_eq!(Ok(Cursor(2)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(2), c);
         }
         {
             let input = b"0.8";
-            assert_eq!(Ok(Cursor(3)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(3), c);
         }
         {
             let input = b"0.8,";
-            assert_eq!(Ok(Cursor(3)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(3), c);
         }
         {
             let input = b"0.1239";
-            assert_eq!(Ok(Cursor(5)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(5), c);
         }
         {
             let input = b"1";
-            assert_eq!(Ok(Cursor(1)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(1), c);
         }
         {
             let input = b"1.";
-            assert_eq!(Ok(Cursor(2)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(2), c);
         }
         {
             let input = b"1.0";
-            assert_eq!(Ok(Cursor(3)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(3), c);
         }
         {
             let input = b"1.00";
-            assert_eq!(Ok(Cursor(4)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(4), c);
         }
         {
             let input = b"1.000";
-            assert_eq!(Ok(Cursor(5)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(5), c);
         }
         {
             let input = b"1.0000";
-            assert_eq!(Ok(Cursor(5)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(5), c);
         }
         {
             let input = b"1.1";
-            assert_eq!(Ok(Cursor(2)), q_value(input, Cursor(0)));
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), q_value(input, &mut c));
+            assert_eq!(Cursor(2), c);
         }
     }
 }

@@ -70,9 +70,9 @@ impl<'a> EncodingMatcher<'a> {
         while !c.eof(self.input) {
             match self.state {
                 State::SearchingEncoding => {
-                    if let Ok(c2) = lexer2::token(self.input, c) {
-                        let token = c.slice(self.input, c2);
-                        c = c2;
+                    let c1 = c;
+                    if let Ok(()) = lexer2::token(self.input, &mut c) {
+                        let token = c1.slice(self.input, c);
                         self.cur_result = if bytes_eq_ignore_case(token, encoding)
                             || (is_gzip && bytes_eq_ignore_case(token, b"x-gzip"))
                             || (is_compress && bytes_eq_ignore_case(token, b"x-compress"))
@@ -95,50 +95,50 @@ impl<'a> EncodingMatcher<'a> {
                     }
                 }
                 State::SeenEncoding => {
-                    c = lexer2::ows(self.input, c);
-                    if let Ok(c2) = lexer2::semicolon(self.input, c) {
-                        c = lexer2::ows(self.input, c2);
+                    lexer2::ows(self.input, &mut c);
+                    if let Ok(()) = lexer2::semicolon(self.input, &mut c) {
+                        lexer2::ows(self.input, &mut c);
                         self.state = State::SeenSemicolon;
-                    } else if let Ok(c2) = lexer2::comma(self.input, c) {
-                        c = lexer2::ows(self.input, c2);
+                    } else if let Ok(()) = lexer2::comma(self.input, &mut c) {
+                        lexer2::ows(self.input, &mut c);
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
                     }
                 }
                 State::SeenSemicolon => {
                     let c1 = c;
-                    c = lexer2::token(self.input, c).ok()?;
+                    lexer2::token(self.input, &mut c).ok()?;
                     let param_name = c1.slice(self.input, c);
                     is_q_param = bytes_eq_ignore_case(param_name, b"q");
                     self.state = State::SeenParameterName;
                 }
                 State::SeenParameterName => {
-                    c = lexer2::equal(self.input, c).ok()?;
+                    lexer2::equal(self.input, &mut c).ok()?;
                     self.state = State::SeenEqual;
                 }
                 State::SeenEqual => {
                     if is_q_param {
                         let c1 = c;
-                        c = lexer2::q_value(self.input, c).ok()?;
+                        lexer2::q_value(self.input, &mut c).ok()?;
                         if let Some(cur_result) = self.cur_result.as_mut() {
                             cur_result.q =
                                 QValue::try_from(str::from_utf8(c1.slice(self.input, c)).unwrap())
                                     .unwrap();
                         }
                     } else {
-                        c = lexer2::alt(lexer2::token, lexer2::quoted_string)(self.input, c)
+                        lexer2::alt(lexer2::token, lexer2::quoted_string)(self.input, &mut c)
                             .ok()?;
                     }
                     self.state = State::SeenParameterValue;
                 }
                 State::SeenParameterValue => {
-                    c = lexer2::ows(self.input, c);
-                    if let Ok(c2) = lexer2::comma(self.input, c) {
-                        c = lexer2::ows(self.input, c2);
+                    lexer2::ows(self.input, &mut c);
+                    if let Ok(()) = lexer2::comma(self.input, &mut c) {
+                        lexer2::ows(self.input, &mut c);
                         self.may_update_best_result();
                         self.state = State::SearchingEncoding;
-                    } else if let Ok(c2) = lexer2::semicolon(self.input, c) {
-                        c = lexer2::ows(self.input, c2);
+                    } else if let Ok(()) = lexer2::semicolon(self.input, &mut c) {
+                        lexer2::ows(self.input, &mut c);
                         self.state = State::SeenSemicolon;
                     }
                 }
