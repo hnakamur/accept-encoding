@@ -2,7 +2,7 @@ use std::{cmp::Ordering, str};
 
 use crate::{
     byte_slice::bytes_eq_ignore_case,
-    lexer2::{self, Cursor},
+    lexer::{self, Cursor},
     q_value::QValue,
 };
 
@@ -20,7 +20,7 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
         match state {
             State::SearchingEncoding => {
                 let c1 = c;
-                if lexer2::token(input, &mut c).is_ok() {
+                if lexer::token(input, &mut c).is_ok() {
                     let token = c1.slice(input, c);
                     cur_result = if bytes_eq_ignore_case(token, encoding)
                         || (is_gzip && bytes_eq_ignore_case(token, b"x-gzip"))
@@ -44,48 +44,48 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
                 }
             }
             State::SeenEncoding => {
-                lexer2::ows(input, &mut c);
-                if lexer2::byte(b';')(input, &mut c).is_ok() {
-                    lexer2::ows(input, &mut c);
+                lexer::ows(input, &mut c);
+                if lexer::byte(b';')(input, &mut c).is_ok() {
+                    lexer::ows(input, &mut c);
                     state = State::SeenSemicolon;
-                } else if lexer2::byte(b',')(input, &mut c).is_ok() {
-                    lexer2::ows(input, &mut c);
+                } else if lexer::byte(b',')(input, &mut c).is_ok() {
+                    lexer::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingEncoding;
                 }
             }
             State::SeenSemicolon => {
                 let c1 = c;
-                lexer2::token(input, &mut c).ok()?;
+                lexer::token(input, &mut c).ok()?;
                 let param_name = c1.slice(input, c);
                 is_q_param = bytes_eq_ignore_case(param_name, b"q");
                 state = State::SeenParameterName;
             }
             State::SeenParameterName => {
-                lexer2::byte(b'=')(input, &mut c).ok()?;
+                lexer::byte(b'=')(input, &mut c).ok()?;
                 state = State::SeenEqual;
             }
             State::SeenEqual => {
                 if is_q_param {
                     let c1 = c;
-                    lexer2::q_value(input, &mut c).ok()?;
+                    lexer::q_value(input, &mut c).ok()?;
                     if let Some(cur_result) = cur_result.as_mut() {
                         cur_result.q =
                             QValue::try_from(str::from_utf8(c1.slice(input, c)).unwrap()).unwrap();
                     }
                 } else {
-                    lexer2::alt(lexer2::token, lexer2::quoted_string)(input, &mut c).ok()?;
+                    lexer::alt(lexer::token, lexer::quoted_string)(input, &mut c).ok()?;
                 }
                 state = State::SeenParameterValue;
             }
             State::SeenParameterValue => {
-                lexer2::ows(input, &mut c);
-                if lexer2::byte(b',')(input, &mut c).is_ok() {
-                    lexer2::ows(input, &mut c);
+                lexer::ows(input, &mut c);
+                if lexer::byte(b',')(input, &mut c).is_ok() {
+                    lexer::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingEncoding;
-                } else if lexer2::byte(b';')(input, &mut c).is_ok() {
-                    lexer2::ows(input, &mut c);
+                } else if lexer::byte(b';')(input, &mut c).is_ok() {
+                    lexer::ows(input, &mut c);
                     state = State::SeenSemicolon;
                 }
             }
