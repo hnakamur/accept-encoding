@@ -1,5 +1,7 @@
 use crate::q_value::{QValue, Q_VALUE_FRAC_MAX_DIGITS};
 
+pub(crate) type Position = usize;
+
 #[derive(Debug, PartialEq)]
 pub(crate) enum LexerToken<'a> {
     Token(&'a [u8]),
@@ -11,48 +13,46 @@ pub(crate) enum LexerToken<'a> {
     Slash,
 }
 
-pub(crate) fn ows(input: &[u8], pos: &mut usize) {
-    while *pos < input.len() {
-        match input[*pos] {
-            b' ' | b'\t' => *pos += 1,
-            _ => return,
+pub(crate) fn ows(input: &[u8], pos: Position) -> Position {
+    let mut pos = pos;
+    while pos < input.len() {
+        match input[pos] {
+            b' ' | b'\t' => pos += 1,
+            _ => break,
         }
     }
+    pos
 }
 
-pub(crate) fn slash<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
-    if *pos < input.len() && input[*pos] == b'/' {
-        *pos += 1;
-        Some(LexerToken::Slash)
+pub(crate) fn slash<'a>(input: &'a [u8], pos: Position) -> (Position, Option<LexerToken<'a>>) {
+    if pos < input.len() && input[pos] == b'/' {
+        (pos + 1, Some(LexerToken::Slash))
     } else {
-        None
+        (pos, None)
     }
 }
 
-pub(crate) fn comma<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
-    if *pos < input.len() && input[*pos] == b',' {
-        *pos += 1;
-        Some(LexerToken::Comma)
+pub(crate) fn comma<'a>(input: &'a [u8], pos: Position) -> (Position, Option<LexerToken<'a>>) {
+    if pos < input.len() && input[pos] == b',' {
+        (pos + 1, Some(LexerToken::Comma))
     } else {
-        None
+        (pos, None)
     }
 }
 
-pub(crate) fn semicolon<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
-    if *pos < input.len() && input[*pos] == b';' {
-        *pos += 1;
-        Some(LexerToken::Semicolon)
+pub(crate) fn semicolon<'a>(input: &'a [u8], pos: Position) -> (Position, Option<LexerToken<'a>>) {
+    if pos < input.len() && input[pos] == b';' {
+        (pos + 1, Some(LexerToken::Semicolon))
     } else {
-        None
+        (pos, None)
     }
 }
 
-pub(crate) fn equal<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
-    if *pos < input.len() && input[*pos] == b'=' {
-        *pos += 1;
-        Some(LexerToken::Equal)
+pub(crate) fn equal<'a>(input: &'a [u8], pos: Position) -> (Position, Option<LexerToken<'a>>) {
+    if pos < input.len() && input[pos] == b'=' {
+        (pos + 1, Some(LexerToken::Equal))
     } else {
-        None
+        (pos, None)
     }
 }
 
@@ -83,30 +83,35 @@ fn is_tchar(c: u8) -> bool {
     TCHAR_TABLE[c as usize]
 }
 
-pub(crate) fn token<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
-    let mut i = *pos;
+pub(crate) fn token<'a>(input: &'a [u8], pos: Position) -> (Position, Option<LexerToken<'a>>) {
+    let mut i = pos;
     while i < input.len() && is_tchar(input[i]) {
         i += 1
     }
-    if i == *pos {
-        None
+    if i == pos {
+        (i, None)
     } else {
-        let v = &input[*pos..i];
-        *pos = i;
-        Some(LexerToken::Token(v))
+        let v = &input[pos..i];
+        (i, Some(LexerToken::Token(v)))
     }
 }
 
-pub(crate) fn parameter_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
-    if let Some(v) = token(input, pos) {
-        Some(v)
+pub(crate) fn parameter_value<'a>(
+    input: &'a [u8],
+    pos: Position,
+) -> (Position, Option<LexerToken<'a>>) {
+    if let (pos2, Some(v)) = token(input, pos) {
+        (pos2, Some(v))
     } else {
         double_quoted_string(input, pos)
     }
 }
 
-pub(crate) fn double_quoted_string<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
-    let i = *pos;
+pub(crate) fn double_quoted_string<'a>(
+    input: &'a [u8],
+    pos: Position,
+) -> (Position, Option<LexerToken<'a>>) {
+    let i = pos;
     if i < input.len() && input[i] == b'"' {
         let mut escaped = false;
         for i in i + 1..input.len() {
@@ -116,9 +121,8 @@ pub(crate) fn double_quoted_string<'a>(input: &'a [u8], pos: &mut usize) -> Opti
                 let c = input[i];
                 match c {
                     b'"' => {
-                        let v = &input[*pos..i + 1];
-                        *pos = i + 1;
-                        return Some(LexerToken::DoubleQuotedString(v));
+                        let v = &input[pos..i + 1];
+                        return (i + 1, Some(LexerToken::DoubleQuotedString(v)));
                     }
                     b'\\' => escaped = true,
                     _ => {}
@@ -126,16 +130,16 @@ pub(crate) fn double_quoted_string<'a>(input: &'a [u8], pos: &mut usize) -> Opti
             }
         }
     }
-    None
+    (i, None)
 }
 
-pub(crate) fn q_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken<'a>> {
-    let mut i = *pos;
+pub(crate) fn q_value<'a>(input: &'a [u8], pos: Position) -> (Position, Option<LexerToken<'a>>) {
+    let mut i = pos;
     if i < input.len() {
         let mut millis: u16 = match input[i] {
             b'0' => 0,
             b'1' => 1,
-            _ => return None,
+            _ => return (i, None),
         };
         i += 1;
         let mut frac_start = i;
@@ -170,10 +174,12 @@ pub(crate) fn q_value<'a>(input: &'a [u8], pos: &mut usize) -> Option<LexerToken
         for _ in i - frac_start..Q_VALUE_FRAC_MAX_DIGITS as usize {
             millis *= 10;
         }
-        *pos = i;
-        return Some(LexerToken::QValue(QValue::from_millis(millis).unwrap()));
+        return (
+            i,
+            Some(LexerToken::QValue(QValue::from_millis(millis).unwrap())),
+        );
     }
-    None
+    (i, None)
 }
 
 #[cfg(test)]
@@ -216,161 +222,86 @@ mod tests {
 
     #[test]
     fn test_ows() {
-        {
-            let input = b" \tfoo";
-            let mut pos = 0;
-            ows(input, &mut pos);
-            assert_eq!(2, pos);
-        }
-        {
-            let input = b"foo";
-            let mut pos = 0;
-            ows(input, &mut pos);
-            assert_eq!(0, pos);
-        }
+        assert_eq!(2, ows(b" \tfoo", 0));
+        assert_eq!(0, ows(b"foo", 0));
     }
 
     #[test]
     fn test_comma() {
-        {
-            let mut pos = 0;
-            assert_eq!(Some(LexerToken::Comma), comma(b",", &mut pos));
-            assert_eq!(1, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(None, comma(b"a", &mut pos));
-            assert_eq!(0, pos);
-        }
+        assert_eq!((1, Some(LexerToken::Comma)), comma(b",", 0));
+        assert_eq!((0, None), comma(b"a", 0));
     }
 
     #[test]
     fn test_token_or_value() {
-        {
-            let mut pos = 0;
-            assert_eq!(Some(LexerToken::Token(b"foo")), token(b"foo,", &mut pos));
-            assert_eq!(3, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(None, token(b",", &mut pos));
-            assert_eq!(0, pos);
-        }
+        assert_eq!((3, Some(LexerToken::Token(b"foo"))), token(b"foo,", 0));
+        assert_eq!((0, None), token(b",", 0));
     }
 
     #[test]
     fn test_double_quoted_string() {
-        {
-            let mut pos = 0;
-            let expected = b"\"a, b\"";
-            assert_eq!(
-                Some(LexerToken::DoubleQuotedString(expected)),
-                double_quoted_string(b"\"a, b\" , c", &mut pos)
-            );
-            assert_eq!(expected.len(), pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(None, double_quoted_string(b",", &mut pos));
-            assert_eq!(0, pos);
-        }
-        {
-            // unclosed string
-            let mut pos = 0;
-            assert_eq!(None, double_quoted_string(b"\"", &mut pos));
-            assert_eq!(0, pos);
-        }
+        assert_eq!(
+            (
+                b"\"a, b\"".len(),
+                Some(LexerToken::DoubleQuotedString(b"\"a, b\""))
+            ),
+            double_quoted_string(b"\"a, b\" , c", 0)
+        );
+
+        assert_eq!((0, None), double_quoted_string(b",", 0));
+
+        // unclosed string
+        assert_eq!((0, None), double_quoted_string(b"\"", 0));
     }
 
     #[test]
     fn test_q_value() {
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(1.0).unwrap())),
-                q_value(b"1", &mut pos)
-            );
-            assert_eq!(1, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(1.0).unwrap())),
-                q_value(b"1.", &mut pos)
-            );
-            assert_eq!(2, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(1.0).unwrap())),
-                q_value(b"1.0", &mut pos)
-            );
-            assert_eq!(3, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(1.0).unwrap())),
-                q_value(b"1.01", &mut pos)
-            );
-            assert_eq!(3, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(1.0).unwrap())),
-                q_value(b"1.000", &mut pos)
-            );
-            assert_eq!(5, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(1.0).unwrap())),
-                q_value(b"1.0000", &mut pos)
-            );
-            assert_eq!(5, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(0.0).unwrap())),
-                q_value(b"0", &mut pos)
-            );
-            assert_eq!(1, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(0.0).unwrap())),
-                q_value(b"0.", &mut pos)
-            );
-            assert_eq!(2, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(0.8).unwrap())),
-                q_value(b"0.8", &mut pos)
-            );
-            assert_eq!(3, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(0.82).unwrap())),
-                q_value(b"0.82", &mut pos)
-            );
-            assert_eq!(4, pos);
-        }
-        {
-            let mut pos = 0;
-            assert_eq!(
-                Some(LexerToken::QValue(QValue::try_from(0.823).unwrap())),
-                q_value(b"0.8235", &mut pos)
-            );
-            assert_eq!(5, pos);
-        }
+        assert_eq!(
+            (1, Some(LexerToken::QValue(QValue::try_from(1.0).unwrap()))),
+            q_value(b"1", 0)
+        );
+        assert_eq!(
+            (2, Some(LexerToken::QValue(QValue::try_from(1.0).unwrap()))),
+            q_value(b"1.", 0)
+        );
+        assert_eq!(
+            (3, Some(LexerToken::QValue(QValue::try_from(1.0).unwrap()))),
+            q_value(b"1.0", 0)
+        );
+        assert_eq!(
+            (3, Some(LexerToken::QValue(QValue::try_from(1.0).unwrap()))),
+            q_value(b"1.01", 0)
+        );
+        assert_eq!(
+            (5, Some(LexerToken::QValue(QValue::try_from(1.0).unwrap()))),
+            q_value(b"1.000", 0)
+        );
+        assert_eq!(
+            (5, Some(LexerToken::QValue(QValue::try_from(1.0).unwrap()))),
+            q_value(b"1.0000", 0)
+        );
+        assert_eq!(
+            (1, Some(LexerToken::QValue(QValue::try_from(0.0).unwrap()))),
+            q_value(b"0", 0)
+        );
+        assert_eq!(
+            (2, Some(LexerToken::QValue(QValue::try_from(0.0).unwrap()))),
+            q_value(b"0.", 0)
+        );
+        assert_eq!(
+            (3, Some(LexerToken::QValue(QValue::try_from(0.8).unwrap()))),
+            q_value(b"0.8", 0)
+        );
+        assert_eq!(
+            (4, Some(LexerToken::QValue(QValue::try_from(0.82).unwrap()))),
+            q_value(b"0.82", 0)
+        );
+        assert_eq!(
+            (
+                5,
+                Some(LexerToken::QValue(QValue::try_from(0.823).unwrap()))
+            ),
+            q_value(b"0.8235", 0)
+        );
     }
 }
