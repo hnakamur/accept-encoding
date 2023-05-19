@@ -22,3 +22,19 @@ debug = true
 
 [profile.release]
 debug = true
+lto = true
+codegen-units = 1
+
+[package.metadata.deb]
+maintainer = "Hiroaki Nakamura <hnakamur@gmail.com>"
+copyright = "2023, Hiroaki Nakamura <hnakamur@gmail.com>"
+license-file = ["LICENSE"]
+extended-description = """\
+A library for matching HTP accept-encoding header values \
+and accept header values."""
+depends = "$auto"
+section = "web"
+priority = "optional"
+assets = [
+    ["target/release/deps/libaccept_encoding.so", "usr/lib/x86_64/", "644"],
+]
