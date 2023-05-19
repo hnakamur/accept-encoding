@@ -37,4 +37,5 @@ section = "web"
 priority = "optional"
 assets = [
     ["target/release/deps/libaccept_encoding.so", "usr/lib/x86_64/", "644"],
+    ["accept_encoding.lua", "usr/share/luajit-2.1.0-beta3/", "644"],
 ]
