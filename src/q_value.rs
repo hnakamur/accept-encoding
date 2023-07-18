@@ -107,5 +107,49 @@ mod test {
         assert_eq!(Err(InvaliQValueError), QValue::try_from("1.1"));
 
         assert_eq!(Err(InvaliQValueError), QValue::try_from("-0"));
+        assert_eq!(Err(InvaliQValueError), QValue::try_from("0.a"));
+    }
+
+    #[test]
+    fn test_qvalue_from_millis() {
+        assert_eq!(QValue { millis: 100 }, QValue::from_millis(100).unwrap());
+        assert_eq!(Err(InvaliQValueError), QValue::from_millis(1001));
+    }
+
+    #[test]
+    #[allow(clippy::clone_on_copy)]
+    fn test_qvalue_derive() {
+        assert!(QValue::from_millis(100).unwrap() < QValue::from_millis(200).unwrap().clone());
+    }
+
+    #[test]
+    fn test_qvalue_format_debug() {
+        assert_eq!(
+            "QValue { millis: 100 }".to_string(),
+            format!("{:?}", QValue::from_millis(100).unwrap())
+        )
+    }
+
+    #[test]
+    fn test_qvalue_invalid_error_format_debug() {
+        assert_eq!(
+            "InvaliQValueError".to_string(),
+            format!("{:?}", InvaliQValueError)
+        )
+    }
+
+    #[test]
+    fn test_qvalue_try_from_f64() {
+        assert_eq!(
+            QValue::from_millis(100).unwrap(),
+            QValue::try_from(0.1).unwrap()
+        );
+
+        assert_eq!(Err(InvaliQValueError), QValue::try_from(1.01));
+    }
+
+    #[test]
+    fn test_f64_from_qvalue() {
+        assert_eq!(0.1, f64::from(QValue::from_millis(100).unwrap()))
     }
 }
