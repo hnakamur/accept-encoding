@@ -212,6 +212,14 @@ mod tests {
             match_for_encoding(b"x-Gzip ; q=0.8", b"gzip")
         );
 
+        assert_eq!(
+            Some(EncodingMatch {
+                match_type: EncodingMatchType::Exact,
+                q: QValue::try_from(0.8).unwrap(),
+            }),
+            match_for_encoding(b"x-compress ; q=0.8", b"compress")
+        );
+
         assert_eq!(None, match_for_encoding(b"br  ; q=1", b"gzip"));
 
         {
@@ -339,6 +347,24 @@ mod tests {
                 gzip_res
             );
         }
+        {
+            let header_value = b"gzip;q=0.9; a=b";
+            let gzip_res = match_for_encoding(header_value, b"gzip");
+            assert_eq!(
+                Some(EncodingMatch {
+                    match_type: EncodingMatchType::Exact,
+                    q: QValue::try_from(0.9).unwrap(),
+                }),
+                gzip_res
+            );
+        }
+
+        assert_eq!(None, match_for_encoding(b" ", b"gzip"));
+        assert_eq!(None, match_for_encoding(b"br/", b"gzip"));
+        assert_eq!(None, match_for_encoding(b"br  ;", b"gzip"));
+        assert_eq!(None, match_for_encoding(b"br  ; /", b"gzip"));
+        assert_eq!(None, match_for_encoding(b"br  ; q=1 ", b"gzip"));
+        assert_eq!(None, match_for_encoding(b"br  ; q=1 /", b"gzip"));
     }
 
     #[test]
@@ -413,6 +439,34 @@ mod tests {
                 match_type: EncodingMatchType::Exact,
                 q: QValue::try_from(0.9).unwrap(),
             })
+        );
+    }
+
+    #[test]
+    #[allow(clippy::clone_on_copy)]
+    fn test_encoding_match_type_derive() {
+        assert!(EncodingMatchType::Wildcard < EncodingMatchType::Exact.clone());
+    }
+    #[test]
+    fn test_encoding_match_derive() {
+        assert_eq!(
+            "EncodingMatch { match_type: Exact, q: QValue { millis: 1000 } }".to_string(),
+            format!(
+                "{:?}",
+                EncodingMatch {
+                    match_type: EncodingMatchType::Exact,
+                    q: QValue::try_from(1.0).unwrap()
+                }
+                .clone()
+            )
+        );
+    }
+
+    #[test]
+    fn test_state_derive() {
+        assert_eq!(
+            "SearchingEncoding".to_string(),
+            format!("{:?}", State::SearchingEncoding)
         );
     }
 }
