@@ -48,16 +48,20 @@ pub fn match_for_mime_type(input: &[u8], mime_type: &[u8]) -> Option<MimeTypeMat
                 state = State::SeenSubType;
             }
             State::SeenSubType => {
-                lexer::ows(input, &mut c);
-                if lexer::byte(b';')(input, &mut c).is_ok() {
+                if !c.eof(input) {
                     lexer::ows(input, &mut c);
-                    state = State::SeenSemicolon;
-                } else if lexer::byte(b',')(input, &mut c).is_ok() {
-                    lexer::ows(input, &mut c);
-                    may_update_best_result(&mut cur_result, &mut best_result);
-                    state = State::SearchingMainType;
-                } else {
-                    return None;
+                    if c.eof(input) {
+                        return None;
+                    } else if lexer::byte(b';')(input, &mut c).is_ok() {
+                        lexer::ows(input, &mut c);
+                        state = State::SeenSemicolon;
+                    } else if lexer::byte(b',')(input, &mut c).is_ok() {
+                        lexer::ows(input, &mut c);
+                        may_update_best_result(&mut cur_result, &mut best_result);
+                        state = State::SearchingMainType;
+                    } else {
+                        return None;
+                    }
                 }
             }
             State::SeenSemicolon => {
@@ -85,16 +89,20 @@ pub fn match_for_mime_type(input: &[u8], mime_type: &[u8]) -> Option<MimeTypeMat
                 state = State::SeenParameterValue;
             }
             State::SeenParameterValue => {
-                lexer::ows(input, &mut c);
-                if lexer::byte(b',')(input, &mut c).is_ok() {
+                if !c.eof(input) {
                     lexer::ows(input, &mut c);
-                    may_update_best_result(&mut cur_result, &mut best_result);
-                    state = State::SearchingMainType;
-                } else if lexer::byte(b';')(input, &mut c).is_ok() {
-                    lexer::ows(input, &mut c);
-                    state = State::SeenSemicolon;
-                } else {
-                    return None;
+                    if c.eof(input) {
+                        return None;
+                    } else if lexer::byte(b',')(input, &mut c).is_ok() {
+                        lexer::ows(input, &mut c);
+                        may_update_best_result(&mut cur_result, &mut best_result);
+                        state = State::SearchingMainType;
+                    } else if lexer::byte(b';')(input, &mut c).is_ok() {
+                        lexer::ows(input, &mut c);
+                        state = State::SeenSemicolon;
+                    } else {
+                        return None;
+                    }
                 }
             }
         }
@@ -220,13 +228,8 @@ mod tests {
             match_for_mime_type(b"image/webp", b"image/webp"),
         );
 
-        assert_eq!(
-            Some(MimeTypeMatch {
-                match_type: MimeTypeMatchType::Exact,
-                q: QValue::try_from(1.0).unwrap(),
-            }),
-            match_for_mime_type(b"image/webp ", b"image/webp"),
-        );
+        // trailing whitespace
+        assert_eq!(None, match_for_mime_type(b"image/webp ", b"image/webp"),);
 
         let chrome_accept_html = b"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
 
@@ -260,7 +263,7 @@ mod tests {
 
         {
             let chrome_accept_img_tag =
-                b"image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8 ";
+                b"image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
             let chrome_webp_match = match_for_mime_type(chrome_accept_img_tag, b"image/webp");
             let chrome_png_match = match_for_mime_type(chrome_accept_img_tag, b"image/png");
             assert_eq!(
@@ -278,6 +281,16 @@ mod tests {
                 chrome_png_match,
             );
             assert!(chrome_webp_match.gt(&chrome_png_match));
+        }
+
+        {
+            // trailing whitespace
+            let chrome_accept_img_tag =
+                b"image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8 ";
+            let chrome_webp_match = match_for_mime_type(chrome_accept_img_tag, b"image/webp");
+            let chrome_png_match = match_for_mime_type(chrome_accept_img_tag, b"image/png");
+            assert_eq!(None, chrome_webp_match);
+            assert_eq!(None, chrome_png_match);
         }
 
         let safari_accept_img_tag =

@@ -41,16 +41,20 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
                 state = State::SeenEncoding;
             }
             State::SeenEncoding => {
-                lexer::ows(input, &mut c);
-                if lexer::byte(b';')(input, &mut c).is_ok() {
+                if !c.eof(input) {
                     lexer::ows(input, &mut c);
-                    state = State::SeenSemicolon;
-                } else if lexer::byte(b',')(input, &mut c).is_ok() {
-                    lexer::ows(input, &mut c);
-                    may_update_best_result(&mut cur_result, &mut best_result);
-                    state = State::SearchingEncoding;
-                } else {
-                    return None;
+                    if c.eof(input) {
+                        return None;
+                    } else if lexer::byte(b';')(input, &mut c).is_ok() {
+                        lexer::ows(input, &mut c);
+                        state = State::SeenSemicolon;
+                    } else if lexer::byte(b',')(input, &mut c).is_ok() {
+                        lexer::ows(input, &mut c);
+                        may_update_best_result(&mut cur_result, &mut best_result);
+                        state = State::SearchingEncoding;
+                    } else {
+                        return None;
+                    }
                 }
             }
             State::SeenSemicolon => {
@@ -78,16 +82,20 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
                 state = State::SeenParameterValue;
             }
             State::SeenParameterValue => {
-                lexer::ows(input, &mut c);
-                if lexer::byte(b',')(input, &mut c).is_ok() {
+                if !c.eof(input) {
                     lexer::ows(input, &mut c);
-                    may_update_best_result(&mut cur_result, &mut best_result);
-                    state = State::SearchingEncoding;
-                } else if lexer::byte(b';')(input, &mut c).is_ok() {
-                    lexer::ows(input, &mut c);
-                    state = State::SeenSemicolon;
-                } else {
-                    return None;
+                    if c.eof(input) {
+                        return None;
+                    } else if lexer::byte(b',')(input, &mut c).is_ok() {
+                        lexer::ows(input, &mut c);
+                        may_update_best_result(&mut cur_result, &mut best_result);
+                        state = State::SearchingEncoding;
+                    } else if lexer::byte(b';')(input, &mut c).is_ok() {
+                        lexer::ows(input, &mut c);
+                        state = State::SeenSemicolon;
+                    } else {
+                        return None;
+                    }
                 }
             }
         }
@@ -253,7 +261,7 @@ mod tests {
         }
 
         {
-            let header_value = b"br , * ";
+            let header_value = b"br , *";
             let gzip_res = match_for_encoding(header_value, b"gzip");
             assert_eq!(
                 Some(EncodingMatch {
@@ -275,6 +283,16 @@ mod tests {
             assert!(br_res.gt(&gzip_res));
         }
 
+        {
+            // trailing whitespace
+
+            let header_value = b"br , * ";
+            let gzip_res = match_for_encoding(header_value, b"gzip");
+            assert_eq!(None, gzip_res);
+
+            let br_res = match_for_encoding(header_value, b"br");
+            assert_eq!(None, br_res);
+        }
         {
             let header_value = b"br; q=0.9 , *";
             let gzip_res = match_for_encoding(header_value, b"gzip");
@@ -311,7 +329,7 @@ mod tests {
         }
 
         {
-            let header_value = b"gzip;q=0.9 ";
+            let header_value = b"gzip;q=0.9";
             let gzip_res = match_for_encoding(header_value, b"gzip");
             assert_eq!(
                 Some(EncodingMatch {
