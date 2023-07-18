@@ -49,6 +49,8 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
                     lexer::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingEncoding;
+                } else {
+                    return None;
                 }
             }
             State::SeenSemicolon => {
@@ -84,6 +86,8 @@ pub fn match_for_encoding(input: &[u8], encoding: &[u8]) -> Option<EncodingMatch
                 } else if lexer::byte(b';')(input, &mut c).is_ok() {
                     lexer::ows(input, &mut c);
                     state = State::SeenSemicolon;
+                } else {
+                    return None;
                 }
             }
         }

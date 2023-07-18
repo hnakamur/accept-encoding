@@ -56,6 +56,8 @@ pub fn match_for_mime_type(input: &[u8], mime_type: &[u8]) -> Option<MimeTypeMat
                     lexer::ows(input, &mut c);
                     may_update_best_result(&mut cur_result, &mut best_result);
                     state = State::SearchingMainType;
+                } else {
+                    return None;
                 }
             }
             State::SeenSemicolon => {
@@ -91,6 +93,8 @@ pub fn match_for_mime_type(input: &[u8], mime_type: &[u8]) -> Option<MimeTypeMat
                 } else if lexer::byte(b';')(input, &mut c).is_ok() {
                     lexer::ows(input, &mut c);
                     state = State::SeenSemicolon;
+                } else {
+                    return None;
                 }
             }
         }
