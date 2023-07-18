@@ -444,6 +444,12 @@ mod tests {
             assert_eq!(Cursor(2), c);
         }
         {
+            let input = b".0a";
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), dot_followed_by_at_most_three_zeros(input, &mut c));
+            assert_eq!(Cursor(2), c);
+        }
+        {
             let input = b".000";
             let mut c = Cursor(0);
             assert_eq!(Ok(()), dot_followed_by_at_most_three_zeros(input, &mut c));
@@ -454,6 +460,14 @@ mod tests {
             let mut c = Cursor(0);
             assert_eq!(Ok(()), dot_followed_by_at_most_three_zeros(input, &mut c));
             assert_eq!(Cursor(4), c);
+        }
+        {
+            let input = b"a";
+            let mut c = Cursor(0);
+            assert_eq!(
+                Err(ParseError),
+                dot_followed_by_at_most_three_zeros(input, &mut c)
+            );
         }
     }
 
@@ -537,5 +551,56 @@ mod tests {
             assert_eq!(Ok(()), q_value(input, &mut c));
             assert_eq!(Cursor(2), c);
         }
+    }
+
+    #[test]
+    fn test_alt() {
+        {
+            let input = b"/";
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), alt(byte(b'/'), byte(b'='))(input, &mut c));
+        }
+        {
+            let input = b"=";
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), alt(byte(b'/'), byte(b'='))(input, &mut c));
+        }
+        {
+            let input = b"\"foo\"";
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), alt(token, quoted_string)(input, &mut c));
+        }
+    }
+
+    #[test]
+    fn test_match_m_n() {
+        {
+            let input = b"01";
+            let mut c = Cursor(0);
+            assert_eq!(
+                Err(ParseError),
+                match_m_n(|b| b == b'0', 2, 3)(input, &mut c)
+            );
+        }
+        {
+            let input = b"00";
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), match_m_n(|b| b == b'0', 2, 3)(input, &mut c));
+        }
+        {
+            let input = b"000";
+            let mut c = Cursor(0);
+            assert_eq!(Ok(()), match_m_n(|b| b == b'0', 2, 3)(input, &mut c));
+        }
+    }
+
+    #[test]
+    fn test_cursor_derive() {
+        assert_eq!("Cursor(0)".to_string(), format!("{:?}", Cursor(0).clone()));
+    }
+
+    #[test]
+    fn test_parse_error_derive() {
+        assert_eq!("ParseError".to_string(), format!("{:?}", ParseError));
     }
 }
