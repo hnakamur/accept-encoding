@@ -200,6 +200,12 @@ mod tests {
             Some((b"image".as_slice(), b"webp".as_slice())),
             split_mime_type(b"image/webp")
         );
+        assert_eq!(None, split_mime_type(b"image"));
+        assert_eq!(None, split_mime_type(b""));
+        assert_eq!(
+            Some((b"".as_slice(), b"".as_slice())),
+            split_mime_type(b"/")
+        );
     }
 
     #[test]
@@ -331,5 +337,68 @@ mod tests {
             firefox_png_match,
         );
         assert!(firefox_webp_match.gt(&firefox_png_match));
+
+        // bad mime_type (no slash)
+        assert_eq!(None, match_for_mime_type(b"*/*", b"webp"));
+        // bad main_type
+        assert_eq!(None, match_for_mime_type(b"/*", b"image/webp"));
+        // not slash after main_type
+        assert_eq!(None, match_for_mime_type(b"image;", b"image/webp"));
+        // no subtype after slash
+        assert_eq!(None, match_for_mime_type(b"image/;", b"image/webp"));
+        // bad char after subtype
+        assert_eq!(None, match_for_mime_type(b"image/*/", b"image/webp"));
+        // bad char after semicolon
+        assert_eq!(None, match_for_mime_type(b"image/*;/", b"image/webp"));
+        // bad char after parameter name
+        assert_eq!(None, match_for_mime_type(b"image/*;a/", b"image/webp"));
+        // bad q_value
+        assert_eq!(None, match_for_mime_type(b"image/*;q=/", b"image/webp"));
+        // bad parameter value
+        assert_eq!(None, match_for_mime_type(b"image/*;p=/", b"image/webp"));
+        // bad char after parameter value
+        assert_eq!(None, match_for_mime_type(b"image/*;p=a/", b"image/webp"));
+    }
+
+    #[test]
+    #[allow(clippy::clone_on_copy)]
+    fn test_mime_type_match_type_derive() {
+        assert!(MimeTypeMatchType::MainTypeWildcard < MimeTypeMatchType::SubTypeWildcard.clone());
+        assert_eq!(
+            "MainTypeWildcard".to_string(),
+            format!("{:?}", MimeTypeMatchType::MainTypeWildcard)
+        );
+    }
+
+    #[test]
+    #[allow(clippy::clone_on_copy)]
+    fn test_mime_type_match_derive() {
+        assert_eq!(
+            "MimeTypeMatch { match_type: SubTypeWildcard, q: QValue { millis: 1000 } }".to_string(),
+            format!(
+                "{:?}",
+                MimeTypeMatch {
+                    match_type: MimeTypeMatchType::SubTypeWildcard,
+                    q: QValue::try_from(1.0).unwrap(),
+                }
+                .clone()
+            )
+        );
+    }
+
+    #[test]
+    fn test_get_mime_type_match_type() {
+        assert_eq!(
+            None,
+            get_mime_type_match_type(b"*", b"webp", b"image", b"webp")
+        );
+    }
+
+    #[test]
+    fn test_state_derive() {
+        assert_eq!(
+            "SearchingMainType".to_string(),
+            format!("{:?}", State::SearchingMainType)
+        );
     }
 }
