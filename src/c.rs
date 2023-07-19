@@ -117,3 +117,275 @@ pub extern "C" fn c_cmp_mime_type_match(m1: CMimeTypeMatch, m2: CMimeTypeMatch) 
         0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CString;
+
+    use super::*;
+
+    #[test]
+    fn test_c_match_encoding() {
+        {
+            let header_value = CString::new("br, gzip").unwrap();
+            let encoding = CString::new("br").unwrap();
+            let m = c_match_encoding(
+                header_value.as_ptr(),
+                header_value.as_bytes().len(),
+                encoding.as_ptr(),
+                encoding.as_bytes().len(),
+            );
+            assert_eq!(C_ENCODING_MATCH_TYPE_EXACT, m.match_type);
+            assert_eq!(1.0, m.q);
+        }
+        {
+            let header_value = CString::new("*").unwrap();
+            let encoding = CString::new("br").unwrap();
+            let m = c_match_encoding(
+                header_value.as_ptr(),
+                header_value.as_bytes().len(),
+                encoding.as_ptr(),
+                encoding.as_bytes().len(),
+            );
+            assert_eq!(C_ENCODING_MATCH_TYPE_WILDCARD, m.match_type);
+            assert_eq!(1.0, m.q);
+        }
+        {
+            let header_value = CString::new("gzip").unwrap();
+            let encoding = CString::new("br").unwrap();
+            let m = c_match_encoding(
+                header_value.as_ptr(),
+                header_value.as_bytes().len(),
+                encoding.as_ptr(),
+                encoding.as_bytes().len(),
+            );
+            assert_eq!(C_ENCODING_MATCH_TYPE_NO_MATCH, m.match_type);
+            assert_eq!(0.0, m.q);
+        }
+    }
+
+    #[test]
+    fn test_c_cmp_encoding_match() {
+        assert_eq!(
+            -1,
+            c_cmp_encoding_match(
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_NO_MATCH,
+                    q: 0.0,
+                },
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_WILDCARD,
+                    q: 0.0,
+                }
+            )
+        );
+
+        assert_eq!(
+            1,
+            c_cmp_encoding_match(
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_EXACT,
+                    q: 0.0,
+                },
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_NO_MATCH,
+                    q: 0.0,
+                }
+            )
+        );
+
+        assert_eq!(
+            -1,
+            c_cmp_encoding_match(
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_EXACT,
+                    q: 0.0,
+                },
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_EXACT,
+                    q: 0.1,
+                }
+            )
+        );
+
+        assert_eq!(
+            0,
+            c_cmp_encoding_match(
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_EXACT,
+                    q: 0.8,
+                },
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_EXACT,
+                    q: 0.8,
+                }
+            )
+        );
+
+        assert_eq!(
+            1,
+            c_cmp_encoding_match(
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_EXACT,
+                    q: 1.0,
+                },
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_EXACT,
+                    q: 0.9,
+                }
+            )
+        );
+
+        assert_eq!(
+            0,
+            c_cmp_encoding_match(
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_NO_MATCH,
+                    q: 0.0,
+                },
+                CEncodingMatch {
+                    match_type: C_ENCODING_MATCH_TYPE_NO_MATCH,
+                    q: 1.0,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn test_c_match_mime_type() {
+        {
+            let header_value = CString::new("image/webp").unwrap();
+            let encoding = CString::new("image/webp").unwrap();
+            let m = c_match_mime_type(
+                header_value.as_ptr(),
+                header_value.as_bytes().len(),
+                encoding.as_ptr(),
+                encoding.as_bytes().len(),
+            );
+            assert_eq!(C_MIME_TYPE_MATCH_TYPE_EXACT, m.match_type);
+            assert_eq!(1.0, m.q);
+        }
+        {
+            let header_value = CString::new("image/*").unwrap();
+            let encoding = CString::new("image/webp").unwrap();
+            let m = c_match_mime_type(
+                header_value.as_ptr(),
+                header_value.as_bytes().len(),
+                encoding.as_ptr(),
+                encoding.as_bytes().len(),
+            );
+            assert_eq!(C_MIME_TYPE_MATCH_TYPE_SUB_TYPE_WILDCARD, m.match_type);
+            assert_eq!(1.0, m.q);
+        }
+        {
+            let header_value = CString::new("*/*").unwrap();
+            let encoding = CString::new("image/webp").unwrap();
+            let m = c_match_mime_type(
+                header_value.as_ptr(),
+                header_value.as_bytes().len(),
+                encoding.as_ptr(),
+                encoding.as_bytes().len(),
+            );
+            assert_eq!(C_MIME_TYPE_MATCH_TYPE_MAIN_TYPE_WILDCARD, m.match_type);
+            assert_eq!(1.0, m.q);
+        }
+        {
+            let header_value = CString::new("image/png").unwrap();
+            let encoding = CString::new("image/webp").unwrap();
+            let m = c_match_mime_type(
+                header_value.as_ptr(),
+                header_value.as_bytes().len(),
+                encoding.as_ptr(),
+                encoding.as_bytes().len(),
+            );
+            assert_eq!(C_ENCODING_MATCH_TYPE_NO_MATCH, m.match_type);
+            assert_eq!(0.0, m.q);
+        }
+    }
+    #[test]
+    fn test_c_cmp_mime_type_match() {
+        assert_eq!(
+            -1,
+            c_cmp_mime_type_match(
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_NO_MATCH,
+                    q: 0.0,
+                },
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_MAIN_TYPE_WILDCARD,
+                    q: 0.0,
+                }
+            )
+        );
+
+        assert_eq!(
+            1,
+            c_cmp_mime_type_match(
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_EXACT,
+                    q: 0.0,
+                },
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_NO_MATCH,
+                    q: 0.0,
+                }
+            )
+        );
+
+        assert_eq!(
+            -1,
+            c_cmp_mime_type_match(
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_EXACT,
+                    q: 0.0,
+                },
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_EXACT,
+                    q: 0.1,
+                }
+            )
+        );
+
+        assert_eq!(
+            0,
+            c_cmp_mime_type_match(
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_EXACT,
+                    q: 0.8,
+                },
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_EXACT,
+                    q: 0.8,
+                }
+            )
+        );
+
+        assert_eq!(
+            1,
+            c_cmp_mime_type_match(
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_EXACT,
+                    q: 1.0,
+                },
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_EXACT,
+                    q: 0.9,
+                }
+            )
+        );
+
+        assert_eq!(
+            0,
+            c_cmp_mime_type_match(
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_NO_MATCH,
+                    q: 0.0,
+                },
+                CMimeTypeMatch {
+                    match_type: C_MIME_TYPE_MATCH_TYPE_NO_MATCH,
+                    q: 1.0,
+                }
+            )
+        );
+    }
+}
