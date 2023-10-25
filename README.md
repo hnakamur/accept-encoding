@@ -5,3 +5,9 @@
 * Usable from C programming language.
 
 This library is only meant for my use case and it not aimed at a generic libary.
+
+## How to build deb package
+
+```
+cargo deb
+```
